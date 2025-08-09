@@ -1,0 +1,11 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Development-friendly default (will be hardened later)
+    match /{document=**} {
+      allow read, write: if request.time < timestamp.date(9999, 1, 1);
+    }
+  }
+}
+
+
