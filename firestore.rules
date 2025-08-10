@@ -1,9 +1,51 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Development-friendly default (will be hardened later)
+    function isAuthenticated() { return request.auth != null; }
+    function isTradesperson() {
+      return isAuthenticated() && exists(/databases/$(database)/documents/tradespeople/$(request.auth.uid));
+    }
+
+    // Global reads allowed for now; deletes are disabled globally
     match /{document=**} {
-      allow read, write: if request.time < timestamp.date(9999, 1, 1);
+      allow read: if true;
+      allow delete: if false;
+    }
+
+    // tradespeople: only owner can create/update their own profile
+    match /tradespeople/{uid} {
+      allow create: if isAuthenticated() && request.auth.uid == uid;
+      allow update: if isAuthenticated() && request.auth.uid == uid;
+    }
+
+    // jobs:
+    // - anyone may create a job
+    // - only an authenticated tradesperson may update status, with strict field and transition checks
+    match /jobs/{jobId} {
+      allow create: if true;
+
+      allow update: if isTradesperson() && isAllowedJobStatusUpdate();
+
+      function isAllowedJobStatusUpdate() {
+        let diff = request.resource.data.diff(resource.data);
+        // Only 'status' and 'acceptedByTradespersonId' may change
+        let onlyAllowedFieldsChanged = diff.changedKeys().hasOnly(['status', 'acceptedByTradespersonId']);
+
+        // Accepting a pending job: status pending -> accepted by the caller
+        let accepting = resource.data.status == 'pending' &&
+                        request.resource.data.status == 'accepted' &&
+                        request.resource.data.acceptedByTradespersonId == request.auth.uid;
+
+        // Updating an already accepted job: only the acceptor can move to completed/cancelled
+        let updatingOwned = resource.data.acceptedByTradespersonId == request.auth.uid &&
+                            (
+                              request.resource.data.status == 'accepted' ||
+                              request.resource.data.status == 'completed' ||
+                              request.resource.data.status == 'cancelled'
+                            );
+
+        return onlyAllowedFieldsChanged && (accepting || updatingOwned);
+      }
     }
   }
 }
