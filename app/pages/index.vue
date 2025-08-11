@@ -1,9 +1,21 @@
 <template>
-  <div style="padding: 2rem; font-family: sans-serif;">
-    <h1>Dobrodošli na MajstorSada</h1>
-    <p>
-      <NuxtLink to="/majstor/login">Idi na prijavu za majstore</NuxtLink>
-    </p>
+  <div class="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+    <div class="w-full max-w-xl text-center">
+      <h1 class="text-3xl font-bold text-gray-900">Treba vam majstor? Rešenje je na jedan klik.</h1>
+      <p class="mt-3 text-gray-600">1. Opišite problem. 2. Pošaljite zahtev. 3. Sačekajte poziv majstora.</p>
+      <div class="mt-8">
+        <NuxtLink
+          to="/zahtev"
+          class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-3 rounded-lg shadow active:scale-[0.99]"
+        >
+          [ Zatraži Majstora ]
+        </NuxtLink>
+      </div>
+
+      <div class="mt-10 text-sm text-gray-500">
+        <NuxtLink to="/majstor/login" class="underline">Prijava za majstore</NuxtLink>
+      </div>
+    </div>
   </div>
 </template>
 
