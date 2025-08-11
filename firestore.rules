@@ -14,6 +14,7 @@ service cloud.firestore {
 
     // tradespeople: only owner can create/update their own profile
     match /tradespeople/{uid} {
+      allow read: if isAuthenticated() && request.auth.uid == uid;
       allow create: if isAuthenticated() && request.auth.uid == uid;
       allow update: if isAuthenticated() && request.auth.uid == uid;
     }

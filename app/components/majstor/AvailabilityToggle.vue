@@ -1,0 +1,74 @@
+<template>
+  <div class="bg-white rounded-xl shadow p-4 flex items-center justify-between">
+    <div>
+      <div class="text-sm text-gray-500">Status</div>
+      <div class="text-lg font-semibold" :class="isAvailable ? 'text-blue-700' : 'text-gray-700'">
+        {{ isAvailable ? 'Dostupan' : 'Nedostupan' }}
+      </div>
+    </div>
+
+    <button
+      :disabled="toggling"
+      @click="onToggle"
+      class="relative w-16 h-9 rounded-full transition-colors"
+      :class="[
+        isAvailable ? 'bg-blue-600' : 'bg-gray-300',
+        toggling ? 'opacity-60 cursor-not-allowed' : ''
+      ]"
+      role="switch"
+      :aria-checked="isAvailable"
+      :aria-busy="toggling"
+    >
+      <span
+        class="absolute top-1 left-1 w-7 h-7 rounded-full bg-white shadow transform transition-transform"
+        :class="isAvailable ? 'translate-x-7' : ''"
+      />
+    </button>
+  </div>
+
+  <p v-if="errorMsg" class="mt-2 text-sm text-red-600">{{ errorMsg }}</p>
+  
+</template>
+
+<script setup lang="ts">
+import { computed, ref } from 'vue'
+import { useTradespersonStore } from '@/stores/tradesperson'
+
+const store = useTradespersonStore()
+const isAvailable = computed(() => store.profile?.status === 'available')
+
+const toggling = ref(false)
+const errorMsg = ref('')
+
+async function onToggle() {
+  if (!store.profile || toggling.value) {
+    console.log('[AvailabilityToggle] onToggle: blocked', {
+      hasProfile: !!store.profile,
+      toggling: toggling.value
+    })
+    return
+  }
+  const next = !isAvailable.value
+  console.log('[AvailabilityToggle] onToggle: start', {
+    current: isAvailable.value,
+    next,
+    uid: store.profile?.uid
+  })
+
+  errorMsg.value = ''
+  toggling.value = true
+  try {
+    console.log('[AvailabilityToggle] calling store.setAvailability', { next })
+    await store.setAvailability(next)
+    console.log('[AvailabilityToggle] setAvailability resolved')
+  } catch (e: any) {
+    console.error('[AvailabilityToggle] setAvailability error', e)
+    errorMsg.value = e?.message || 'Greška pri promeni dostupnosti.'
+  } finally {
+    toggling.value = false
+    console.log('[AvailabilityToggle] onToggle: end')
+  }
+}
+</script>
+
+
