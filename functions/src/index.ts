@@ -1,4 +1,6 @@
 import { HttpsError, onCall, onRequest } from 'firebase-functions/v2/https'
+import { onDocumentCreated } from 'firebase-functions/v2/firestore'
+import { region } from 'firebase-functions'
 import * as logger from 'firebase-functions/logger'
 import { initializeApp } from 'firebase-admin/app'
 import { FieldValue, getFirestore } from 'firebase-admin/firestore'
@@ -47,7 +49,7 @@ export const acceptJob = onCall({ region: 'europe-west3' }, async (request) => {
 
       const tokens = Number(tp.balanceTokens ?? 0)
       if (!Number.isFinite(tokens) || tokens <= 0) {
-        throw new HttpsError('failed-precondition', 'Insufficient tokens.')
+        throw new HttpsError('failed-precondition', 'Nemate dovoljno žetona da prihvatite ovaj posao.')
       }
 
       // Apply updates atomically
@@ -89,5 +91,41 @@ export const buyTokens = onCall({ region: 'europe-west3' }, async (request) => {
   // Payment integration will be implemented later
   return { ok: true, paketId }
 })
+
+export const notifyTradespeople = region('europe-west3')
+  .firestore
+  .document('jobs/{jobId}')
+  .onCreate(async (snap, context) => {
+    const db = getFirestore()
+    const jobData = snap.data()
+    if (!jobData) {
+      logger.warn('notifyTradespeople: No job data found')
+      return
+    }
+
+    const specializationRequired = jobData.specializationRequired
+    if (!specializationRequired) {
+      logger.info('notifyTradespeople: Job without specializationRequired, skipping')
+      return
+    }
+
+    try {
+      const snapshot = await db
+        .collection('tradespeople')
+        .where('specialization', '==', specializationRequired)
+        .where('status', '==', 'available')
+        .get()
+
+      logger.info('notifyTradespeople: matching tradespeople', {
+        count: snapshot.size,
+        specializationRequired
+      })
+      snapshot.forEach((doc) => {
+        logger.info(`Notifikacija bi bila poslata majstoru: ${doc.id}`)
+      })
+    } catch (err: any) {
+      logger.error('notifyTradespeople: query failed', { message: err?.message })
+    }
+  })
 
 

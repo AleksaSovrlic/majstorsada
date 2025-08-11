@@ -42,7 +42,8 @@ async function main() {
     displayName: DISPLAY_NAME,
     email: AUTH_EMAIL,
     specialization: SPECIALIZATION,
-    status: 'nedostupan'
+    status: 'nedostupan',
+    balanceTokens: 5
   }, { merge: true })
   console.log(`Upserted tradesperson profile for ${user.uid} (status: nedostupan)`) 
 }

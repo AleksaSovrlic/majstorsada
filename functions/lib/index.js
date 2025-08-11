@@ -33,8 +33,9 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.buyTokens = exports.acceptJob = exports.health = void 0;
+exports.notifyTradespeople = exports.buyTokens = exports.acceptJob = exports.health = void 0;
 const https_1 = require("firebase-functions/v2/https");
+const firebase_functions_1 = require("firebase-functions");
 const logger = __importStar(require("firebase-functions/logger"));
 const app_1 = require("firebase-admin/app");
 const firestore_1 = require("firebase-admin/firestore");
@@ -73,7 +74,7 @@ exports.acceptJob = (0, https_1.onCall)({ region: 'europe-west3' }, async (reque
             const tp = tradespersonSnap.data();
             const tokens = Number(tp.balanceTokens ?? 0);
             if (!Number.isFinite(tokens) || tokens <= 0) {
-                throw new https_1.HttpsError('failed-precondition', 'Insufficient tokens.');
+                throw new https_1.HttpsError('failed-precondition', 'Nemate dovoljno žetona da prihvatite ovaj posao.');
             }
             // Apply updates atomically
             tx.update(jobRef, {
@@ -110,4 +111,37 @@ exports.buyTokens = (0, https_1.onCall)({ region: 'europe-west3' }, async (reque
     logger.info('buyTokens requested', { paketId, uid: auth.uid });
     // Payment integration will be implemented later
     return { ok: true, paketId };
+});
+exports.notifyTradespeople = (0, firebase_functions_1.region)('europe-west3')
+    .firestore
+    .document('jobs/{jobId}')
+    .onCreate(async (snap, context) => {
+    const db = (0, firestore_1.getFirestore)();
+    const jobData = snap.data();
+    if (!jobData) {
+        logger.warn('notifyTradespeople: No job data found');
+        return;
+    }
+    const specializationRequired = jobData.specializationRequired;
+    if (!specializationRequired) {
+        logger.info('notifyTradespeople: Job without specializationRequired, skipping');
+        return;
+    }
+    try {
+        const snapshot = await db
+            .collection('tradespeople')
+            .where('specialization', '==', specializationRequired)
+            .where('status', '==', 'available')
+            .get();
+        logger.info('notifyTradespeople: matching tradespeople', {
+            count: snapshot.size,
+            specializationRequired
+        });
+        snapshot.forEach((doc) => {
+            logger.info(`Notifikacija bi bila poslata majstoru: ${doc.id}`);
+        });
+    }
+    catch (err) {
+        logger.error('notifyTradespeople: query failed', { message: err?.message });
+    }
 });
