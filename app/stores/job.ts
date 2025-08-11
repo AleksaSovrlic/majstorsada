@@ -6,6 +6,7 @@ interface CreateJobInput {
   location?: string
   contactPhone: string
   imageUrl?: string
+  specializationRequired: string
 }
 
 export const useJobStore = defineStore('job', {
@@ -18,6 +19,7 @@ export const useJobStore = defineStore('job', {
         location: input.location || '',
         contactPhone: input.contactPhone,
         imageUrl: input.imageUrl || null,
+        specializationRequired: input.specializationRequired,
         status: 'pending',
         createdAt: serverTimestamp()
       }

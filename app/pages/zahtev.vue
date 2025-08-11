@@ -6,6 +6,15 @@
 
       <form class="mt-6 space-y-5" @submit.prevent="submit">
         <div>
+          <label class="block text-sm text-gray-700 mb-1">Potreban mi je:</label>
+          <select v-model="specializationRequired" required class="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="">Izaberite tip majstora</option>
+            <option value="vodoinstalater">Vodoinstalater</option>
+            <option value="električar">Električar</option>
+            <option value="bravar">Bravar</option>
+          </select>
+        </div>
+        <div>
           <label class="block text-sm text-gray-700 mb-1">Kratak opis problema</label>
           <textarea v-model="problemDescription" rows="6" required class="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Npr: curi voda iz slavine, ventil ne zatvara..." />
         </div>
@@ -43,6 +52,7 @@ const problemDescription = ref('')
 const location = ref('')
 const contactPhone = ref('')
 const imageFile = ref<File | null>(null)
+const specializationRequired = ref('')
 
 const submitting = ref(false)
 const errorMsg = ref('')
@@ -56,10 +66,14 @@ async function submit() {
   errorMsg.value = ''
   submitting.value = true
   try {
+    if (!specializationRequired.value) {
+      throw new Error('Molimo izaberite tip majstora.')
+    }
     await jobStore.createJob({
       problemDescription: problemDescription.value,
       location: location.value,
       contactPhone: contactPhone.value,
+      specializationRequired: specializationRequired.value,
       // image upload is out of scope now; pass null/undefined
       imageUrl: undefined
     })
