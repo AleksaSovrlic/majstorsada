@@ -24,7 +24,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { httpsCallable } from 'firebase/functions'
+import { useAuthStore } from '@/stores/auth'
 
 interface JobItem {
   jobId: string
@@ -45,9 +45,31 @@ async function onAccept() {
   errorMsg.value = ''
   successMsg.value = ''
   try {
-    const { $functions } = useNuxtApp()
-    const fn = httpsCallable($functions, 'acceptJob')
-    await fn({ jobId: props.job.jobId })
+    const auth = useAuthStore()
+    await auth.ensureAuthReady()
+    const { $firebaseAuth } = useNuxtApp()
+    const idToken = await $firebaseAuth.currentUser?.getIdToken()
+    if (!idToken) throw new Error('Niste prijavljeni.')
+
+    const config = useRuntimeConfig()
+    const projectId = config.public.firebase.projectId || 'majstorsada-18a99'
+    const region = config.public.firebase.functionsRegion || 'europe-west3'
+    const base = process.env.NODE_ENV === 'development'
+      ? `http://127.0.0.1:5501/${projectId}/${region}`
+      : `https://${region}-${projectId}.cloudfunctions.net`
+
+    const resp = await fetch(`${base}/acceptJob`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`
+      },
+      body: JSON.stringify({ data: { jobId: props.job.jobId } })
+    })
+    const json = await resp.json().catch(() => ({}))
+    if (!resp.ok || json?.ok === false) {
+      throw new Error(json?.error || 'Greška pri prihvatanju posla.')
+    }
     successMsg.value = 'Posao prihvaćen.'
   } catch (e: any) {
     errorMsg.value = e?.message || 'Greška pri prihvatanju posla.'

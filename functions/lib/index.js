@@ -32,85 +32,173 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.notifyTradespeople = exports.buyTokens = exports.acceptJob = exports.health = void 0;
+exports.notifyTradespeople = exports.updateTokensByAdmin = exports.buyTokens = exports.acceptJob = exports.health = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const firebase_functions_1 = require("firebase-functions");
 const logger = __importStar(require("firebase-functions/logger"));
 const app_1 = require("firebase-admin/app");
 const firestore_1 = require("firebase-admin/firestore");
+const auth_1 = require("firebase-admin/auth");
+const cors_1 = __importDefault(require("cors"));
 (0, app_1.initializeApp)();
 exports.health = (0, https_1.onRequest)({ region: 'europe-west3' }, (req, res) => {
     res.status(200).send({ ok: true, service: 'functions', env: process.env.NODE_ENV || 'development' });
 });
-exports.acceptJob = (0, https_1.onCall)({ region: 'europe-west3' }, async (request) => {
-    const auth = request.auth;
-    const data = request.data;
-    if (!auth) {
-        throw new https_1.HttpsError('unauthenticated', 'Authentication required.');
-    }
-    if (!data?.jobId || typeof data.jobId !== 'string') {
-        throw new https_1.HttpsError('invalid-argument', 'Missing or invalid jobId.');
-    }
-    const db = (0, firestore_1.getFirestore)();
-    const jobRef = db.collection('jobs').doc(data.jobId);
-    const tradespersonRef = db.collection('tradespeople').doc(auth.uid);
-    try {
-        const result = await db.runTransaction(async (tx) => {
-            const [jobSnap, tradespersonSnap] = await Promise.all([
-                tx.get(jobRef),
-                tx.get(tradespersonRef)
-            ]);
-            if (!jobSnap.exists) {
-                throw new https_1.HttpsError('not-found', 'Job does not exist.');
-            }
-            const job = jobSnap.data();
-            if (job.status !== 'pending') {
-                throw new https_1.HttpsError('failed-precondition', 'Job is not available for acceptance.');
-            }
-            if (!tradespersonSnap.exists) {
-                throw new https_1.HttpsError('permission-denied', 'Tradesperson profile not found.');
-            }
-            const tp = tradespersonSnap.data();
-            const tokens = Number(tp.balanceTokens ?? 0);
-            if (!Number.isFinite(tokens) || tokens <= 0) {
-                throw new https_1.HttpsError('failed-precondition', 'Nemate dovoljno žetona da prihvatite ovaj posao.');
-            }
-            // Apply updates atomically
-            tx.update(jobRef, {
-                status: 'accepted',
-                acceptedByTradespersonId: auth.uid
-            });
-            tx.update(tradespersonRef, {
-                balanceTokens: firestore_1.FieldValue.increment(-1)
-            });
-            return { jobId: data.jobId, acceptedBy: auth.uid };
-        });
-        logger.info('acceptJob success', result);
-        return { ok: true, ...result };
-    }
-    catch (error) {
-        if (error instanceof https_1.HttpsError) {
-            logger.warn('acceptJob failed (HttpsError)', { code: error.code, message: error.message });
-            throw error;
-        }
-        logger.error('acceptJob failed (unexpected)', { message: error?.message, stack: error?.stack });
-        throw new https_1.HttpsError('internal', 'Unexpected error during acceptJob.');
+const corsHandler = (0, cors_1.default)({
+    origin: (origin, callback) => {
+        if (!origin)
+            return callback(null, true);
+        const allowed = /^http:\/\/(localhost|127\.0\.0\.1)(:\\d+)?$/.test(origin);
+        callback(null, allowed);
     }
 });
-exports.buyTokens = (0, https_1.onCall)({ region: 'europe-west3' }, async (request) => {
-    const auth = request.auth;
-    const data = request.data;
-    if (!auth) {
-        throw new https_1.HttpsError('unauthenticated', 'Authentication required.');
+async function verifyBearer(req) {
+    try {
+        const header = req.get('Authorization') || '';
+        const match = header.match(/^Bearer\s+(.+)$/i);
+        if (!match)
+            return null;
+        const decoded = await (0, auth_1.getAuth)().verifyIdToken(match[1]);
+        return { uid: decoded.uid, email: decoded.email };
     }
-    const paketId = data?.paketId;
-    if (!paketId || typeof paketId !== 'string') {
-        throw new https_1.HttpsError('invalid-argument', 'paketId is required.');
+    catch {
+        return null;
     }
-    logger.info('buyTokens requested', { paketId, uid: auth.uid });
-    // Payment integration will be implemented later
-    return { ok: true, paketId };
+}
+exports.acceptJob = (0, https_1.onRequest)({ region: 'europe-west3' }, (req, res) => {
+    corsHandler(req, res, async () => {
+        if (req.method === 'OPTIONS')
+            return res.status(204).send('');
+        if (req.method !== 'POST')
+            return res.status(405).send({ error: 'Method Not Allowed' });
+        const auth = await verifyBearer(req);
+        if (!auth)
+            return res.status(401).send({ error: 'Authentication required.' });
+        const data = (req.body?.data || {});
+        if (!data?.jobId || typeof data.jobId !== 'string') {
+            return res.status(400).send({ error: 'Missing or invalid jobId.' });
+        }
+        const db = (0, firestore_1.getFirestore)();
+        const jobRef = db.collection('jobs').doc(data.jobId);
+        const tradespersonRef = db.collection('tradespeople').doc(auth.uid);
+        try {
+            const result = await db.runTransaction(async (tx) => {
+                const [jobSnap, tradespersonSnap] = await Promise.all([
+                    tx.get(jobRef),
+                    tx.get(tradespersonRef)
+                ]);
+                if (!jobSnap.exists) {
+                    return Promise.reject({ code: 404, message: 'Job does not exist.' });
+                }
+                const job = jobSnap.data();
+                if (job.status !== 'pending') {
+                    return Promise.reject({ code: 412, message: 'Job is not available for acceptance.' });
+                }
+                if (!tradespersonSnap.exists) {
+                    return Promise.reject({ code: 403, message: 'Tradesperson profile not found.' });
+                }
+                const tp = tradespersonSnap.data();
+                const tokens = Number(tp.balanceTokens ?? 0);
+                if (!Number.isFinite(tokens) || tokens <= 0) {
+                    return Promise.reject({ code: 412, message: 'Nemate dovoljno žetona da prihvatite ovaj posao.' });
+                }
+                tx.update(jobRef, {
+                    status: 'accepted',
+                    acceptedByTradespersonId: auth.uid
+                });
+                tx.update(tradespersonRef, {
+                    balanceTokens: firestore_1.FieldValue.increment(-1)
+                });
+                return { jobId: data.jobId, acceptedBy: auth.uid };
+            });
+            logger.info('acceptJob success', result);
+            return res.status(200).send({ ok: true, ...result });
+        }
+        catch (error) {
+            const status = error?.code && Number.isFinite(error.code) ? error.code : 500;
+            const message = error?.message || 'Unexpected error during acceptJob.';
+            if (status !== 500) {
+                logger.warn('acceptJob failed (expected)', { status, message });
+            }
+            else {
+                logger.error('acceptJob failed (unexpected)', { message, stack: error?.stack });
+            }
+            return res.status(status).send({ error: message });
+        }
+    });
+});
+exports.buyTokens = (0, https_1.onRequest)({ region: 'europe-west3' }, (req, res) => {
+    corsHandler(req, res, async () => {
+        if (req.method === 'OPTIONS')
+            return res.status(204).send('');
+        if (req.method !== 'POST')
+            return res.status(405).send({ error: 'Method Not Allowed' });
+        const auth = await verifyBearer(req);
+        if (!auth)
+            return res.status(401).send({ error: 'Authentication required.' });
+        const data = (req.body?.data || {});
+        const paketId = data?.paketId;
+        if (!paketId || typeof paketId !== 'string') {
+            return res.status(400).send({ error: 'paketId is required.' });
+        }
+        logger.info('buyTokens requested', { paketId, uid: auth.uid });
+        return res.status(200).send({ ok: true, paketId });
+    });
+});
+exports.updateTokensByAdmin = (0, https_1.onRequest)({ region: 'europe-west3' }, (req, res) => {
+    corsHandler(req, res, async () => {
+        try {
+            if (req.method === 'OPTIONS')
+                return res.status(204).send('');
+            if (req.method !== 'POST') {
+                return res.status(405).send({ error: 'Method Not Allowed' });
+            }
+            const header = req.get('Authorization') || '';
+            const idToken = header.startsWith('Bearer ') ? header.slice(7) : '';
+            if (!idToken) {
+                return res.status(401).send({ error: 'Authentication required.' });
+            }
+            const decoded = await (0, auth_1.getAuth)().verifyIdToken(idToken);
+            const email = (decoded.email || '').toLowerCase();
+            if (email !== 'aleksa.admin@majstorsada.com') {
+                return res.status(403).send({ error: 'Admin privileges required.' });
+            }
+            const { uid, delta: rawDelta } = (req.body?.data || {});
+            const delta = Math.trunc(Number(rawDelta));
+            if (!uid || typeof uid !== 'string' || !Number.isFinite(delta) || delta === 0) {
+                return res.status(400).send({ error: 'Invalid uid or delta provided.' });
+            }
+            const db = (0, firestore_1.getFirestore)();
+            const ref = db.collection('tradespeople').doc(uid);
+            await db.runTransaction(async (tx) => {
+                const snap = await tx.get(ref);
+                if (!snap.exists) {
+                    throw new https_1.HttpsError('not-found', 'Tradesperson not found.');
+                }
+                const currentTokens = Number(snap.data()?.balanceTokens ?? 0);
+                const finalTokens = currentTokens + delta;
+                if (finalTokens < 0) {
+                    throw new https_1.HttpsError('failed-precondition', 'Stanje žetona ne može biti negativno.');
+                }
+                tx.update(ref, { balanceTokens: finalTokens });
+            });
+            logger.info('updateTokensByAdmin: success', { uid, delta });
+            return res.status(200).send({ data: { ok: true } });
+        }
+        catch (error) {
+            logger.error('updateTokensByAdmin failed', { message: error?.message });
+            if (error instanceof https_1.HttpsError) {
+                const statusMap = { 'not-found': 404, 'failed-precondition': 412 };
+                const status = statusMap[error.code] || 500;
+                return res.status(status).send({ error: { message: error.message } });
+            }
+            return res.status(500).send({ error: { message: 'Unexpected internal error.' } });
+        }
+    });
 });
 exports.notifyTradespeople = (0, firebase_functions_1.region)('europe-west3')
     .firestore
@@ -138,6 +226,10 @@ exports.notifyTradespeople = (0, firebase_functions_1.region)('europe-west3')
             specializationRequired
         });
         snapshot.forEach((doc) => {
+            const data = doc.data();
+            if (data?.status !== 'available') {
+                return;
+            }
             logger.info(`Notifikacija bi bila poslata majstoru: ${doc.id}`);
         });
     }

@@ -1,9 +1,11 @@
-import { HttpsError, onCall, onRequest } from 'firebase-functions/v2/https'
+import { HttpsError, onRequest } from 'firebase-functions/v2/https'
 import { onDocumentCreated } from 'firebase-functions/v2/firestore'
 import { region } from 'firebase-functions'
 import * as logger from 'firebase-functions/logger'
 import { initializeApp } from 'firebase-admin/app'
 import { FieldValue, getFirestore } from 'firebase-admin/firestore'
+import { getAuth } from 'firebase-admin/auth'
+import cors from 'cors'
 
 initializeApp()
 
@@ -11,85 +13,168 @@ export const health = onRequest({ region: 'europe-west3' }, (req, res) => {
   res.status(200).send({ ok: true, service: 'functions', env: process.env.NODE_ENV || 'development' })
 })
 
-export const acceptJob = onCall({ region: 'europe-west3' }, async (request) => {
-  const auth = request.auth
-  const data = request.data as { jobId?: string }
-
-  if (!auth) {
-    throw new HttpsError('unauthenticated', 'Authentication required.')
-  }
-  if (!data?.jobId || typeof data.jobId !== 'string') {
-    throw new HttpsError('invalid-argument', 'Missing or invalid jobId.')
-  }
-
-  const db = getFirestore()
-  const jobRef = db.collection('jobs').doc(data.jobId)
-  const tradespersonRef = db.collection('tradespeople').doc(auth.uid)
-
-  try {
-    const result = await db.runTransaction(async (tx) => {
-      const [jobSnap, tradespersonSnap] = await Promise.all([
-        tx.get(jobRef),
-        tx.get(tradespersonRef)
-      ])
-
-      if (!jobSnap.exists) {
-        throw new HttpsError('not-found', 'Job does not exist.')
-      }
-      const job = jobSnap.data() as any
-
-      if (job.status !== 'pending') {
-        throw new HttpsError('failed-precondition', 'Job is not available for acceptance.')
-      }
-
-      if (!tradespersonSnap.exists) {
-        throw new HttpsError('permission-denied', 'Tradesperson profile not found.')
-      }
-      const tp = tradespersonSnap.data() as any
-
-      const tokens = Number(tp.balanceTokens ?? 0)
-      if (!Number.isFinite(tokens) || tokens <= 0) {
-        throw new HttpsError('failed-precondition', 'Nemate dovoljno žetona da prihvatite ovaj posao.')
-      }
-
-      // Apply updates atomically
-      tx.update(jobRef, {
-        status: 'accepted',
-        acceptedByTradespersonId: auth.uid
-      })
-      tx.update(tradespersonRef, {
-        balanceTokens: FieldValue.increment(-1)
-      })
-
-      return { jobId: data.jobId, acceptedBy: auth.uid }
-    })
-
-    logger.info('acceptJob success', result)
-    return { ok: true, ...result }
-  } catch (error: any) {
-    if (error instanceof HttpsError) {
-      logger.warn('acceptJob failed (HttpsError)', { code: error.code, message: error.message })
-      throw error
-    }
-    logger.error('acceptJob failed (unexpected)', { message: error?.message, stack: error?.stack })
-    throw new HttpsError('internal', 'Unexpected error during acceptJob.')
+const corsHandler = cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true)
+    const allowed = /^http:\/\/(localhost|127\.0\.0\.1)(:\\d+)?$/.test(origin)
+    callback(null, allowed)
   }
 })
 
-export const buyTokens = onCall({ region: 'europe-west3' }, async (request) => {
-  const auth = request.auth
-  const data = request.data as { paketId?: string }
-  if (!auth) {
-    throw new HttpsError('unauthenticated', 'Authentication required.')
+async function verifyBearer(req: any): Promise<{ uid: string; email?: string } | null> {
+  try {
+    const header: string = req.get('Authorization') || ''
+    const match = header.match(/^Bearer\s+(.+)$/i)
+    if (!match) return null
+    const decoded = await getAuth().verifyIdToken(match[1])
+    return { uid: decoded.uid, email: decoded.email }
+  } catch {
+    return null
   }
-  const paketId = data?.paketId
-  if (!paketId || typeof paketId !== 'string') {
-    throw new HttpsError('invalid-argument', 'paketId is required.')
-  }
+}
 
-  logger.info('buyTokens requested', { paketId, uid: auth.uid })
-  // Payment integration will be implemented later
-  return { ok: true, paketId }
+export const acceptJob = onRequest({ region: 'europe-west3' }, (req, res) => {
+  corsHandler(req, res, async () => {
+    if (req.method === 'OPTIONS') return res.status(204).send('')
+    if (req.method !== 'POST') return res.status(405).send({ error: 'Method Not Allowed' })
+
+    const auth = await verifyBearer(req)
+    if (!auth) return res.status(401).send({ error: 'Authentication required.' })
+
+    const data = (req.body?.data || {}) as { jobId?: string }
+    if (!data?.jobId || typeof data.jobId !== 'string') {
+      return res.status(400).send({ error: 'Missing or invalid jobId.' })
+    }
+
+    const db = getFirestore()
+    const jobRef = db.collection('jobs').doc(data.jobId)
+    const tradespersonRef = db.collection('tradespeople').doc(auth.uid)
+
+    try {
+      const result = await db.runTransaction(async (tx) => {
+        const [jobSnap, tradespersonSnap] = await Promise.all([
+          tx.get(jobRef),
+          tx.get(tradespersonRef)
+        ])
+
+        if (!jobSnap.exists) {
+          return Promise.reject({ code: 404, message: 'Job does not exist.' })
+        }
+        const job = jobSnap.data() as any
+
+        if (job.status !== 'pending') {
+          return Promise.reject({ code: 412, message: 'Job is not available for acceptance.' })
+        }
+
+        if (!tradespersonSnap.exists) {
+          return Promise.reject({ code: 403, message: 'Tradesperson profile not found.' })
+        }
+        const tp = tradespersonSnap.data() as any
+
+        const tokens = Number(tp.balanceTokens ?? 0)
+        if (!Number.isFinite(tokens) || tokens <= 0) {
+          return Promise.reject({ code: 412, message: 'Nemate dovoljno žetona da prihvatite ovaj posao.' })
+        }
+
+        tx.update(jobRef, {
+          status: 'accepted',
+          acceptedByTradespersonId: auth.uid
+        })
+        tx.update(tradespersonRef, {
+          balanceTokens: FieldValue.increment(-1)
+        })
+
+        return { jobId: data.jobId, acceptedBy: auth.uid }
+      })
+
+      logger.info('acceptJob success', result)
+      return res.status(200).send({ ok: true, ...result })
+    } catch (error: any) {
+      const status = error?.code && Number.isFinite(error.code) ? error.code : 500
+      const message = error?.message || 'Unexpected error during acceptJob.'
+      if (status !== 500) {
+        logger.warn('acceptJob failed (expected)', { status, message })
+      } else {
+        logger.error('acceptJob failed (unexpected)', { message, stack: error?.stack })
+      }
+      return res.status(status).send({ error: message })
+    }
+  })
+})
+
+export const buyTokens = onRequest({ region: 'europe-west3' }, (req, res) => {
+  corsHandler(req, res, async () => {
+    if (req.method === 'OPTIONS') return res.status(204).send('')
+    if (req.method !== 'POST') return res.status(405).send({ error: 'Method Not Allowed' })
+
+    const auth = await verifyBearer(req)
+    if (!auth) return res.status(401).send({ error: 'Authentication required.' })
+
+    const data = (req.body?.data || {}) as { paketId?: string }
+    const paketId = data?.paketId
+    if (!paketId || typeof paketId !== 'string') {
+      return res.status(400).send({ error: 'paketId is required.' })
+    }
+
+    logger.info('buyTokens requested', { paketId, uid: auth.uid })
+    return res.status(200).send({ ok: true, paketId })
+  })
+})
+
+export const updateTokensByAdmin = onRequest({ region: 'europe-west3' }, (req, res) => {
+  corsHandler(req, res, async () => {
+    try {
+      if (req.method === 'OPTIONS') return res.status(204).send('')
+      if (req.method !== 'POST') {
+        return res.status(405).send({ error: 'Method Not Allowed' })
+      }
+
+      const header: string = req.get('Authorization') || ''
+      const idToken = header.startsWith('Bearer ') ? header.slice(7) : ''
+      if (!idToken) {
+        return res.status(401).send({ error: 'Authentication required.' })
+      }
+
+      const decoded = await getAuth().verifyIdToken(idToken)
+      const email = (decoded.email || '').toLowerCase()
+      if (email !== 'aleksa.admin@majstorsada.com') {
+        return res.status(403).send({ error: 'Admin privileges required.' })
+      }
+
+      const { uid, delta: rawDelta } = (req.body?.data || {}) as { uid?: string; delta?: number | string }
+      const delta = Math.trunc(Number(rawDelta))
+      if (!uid || typeof uid !== 'string' || !Number.isFinite(delta) || delta === 0) {
+        return res.status(400).send({ error: 'Invalid uid or delta provided.' })
+      }
+
+      const db = getFirestore()
+      const ref = db.collection('tradespeople').doc(uid)
+
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref)
+        if (!snap.exists) {
+          throw new HttpsError('not-found', 'Tradesperson not found.')
+        }
+        const currentTokens = Number(snap.data()?.balanceTokens ?? 0)
+        const finalTokens = currentTokens + delta
+        if (finalTokens < 0) {
+          throw new HttpsError('failed-precondition', 'Stanje žetona ne može biti negativno.')
+        }
+        tx.update(ref, { balanceTokens: finalTokens })
+      })
+
+      logger.info('updateTokensByAdmin: success', { uid, delta })
+      return res.status(200).send({ data: { ok: true } })
+    } catch (error: any) {
+      logger.error('updateTokensByAdmin failed', { message: error?.message })
+      if (error instanceof HttpsError) {
+        const statusMap: Record<string, number> = { 'not-found': 404, 'failed-precondition': 412 }
+        const status = statusMap[error.code] || 500
+        return res.status(status).send({ error: { message: error.message } })
+      }
+      return res.status(500).send({ error: { message: 'Unexpected internal error.' } })
+    }
+  })
 })
 
 export const notifyTradespeople = region('europe-west3')
@@ -121,6 +206,10 @@ export const notifyTradespeople = region('europe-west3')
         specializationRequired
       })
       snapshot.forEach((doc) => {
+        const data = doc.data() as any
+        if (data?.status !== 'available') {
+          return
+        }
         logger.info(`Notifikacija bi bila poslata majstoru: ${doc.id}`)
       })
     } catch (err: any) {
