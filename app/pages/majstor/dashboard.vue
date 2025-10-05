@@ -3,6 +3,10 @@
     <AvailabilityToggle />
     <TokenBalance />
 
+    <div class="bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-lg p-3">
+      Potrebno Vam je još žetona? Kontaktirajte administratora na broj: 06X/XXX-XXXX
+    </div>
+
     <div class="pt-2 space-y-3">
       <NewJobCard v-for="j in jobs" :key="j.jobId" :job="j" @dismiss="dismissJob" />
       <div v-if="jobs.length === 0" class="text-sm text-gray-500 text-center py-6">Nema novih poslova trenutno.</div>

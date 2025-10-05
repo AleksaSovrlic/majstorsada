@@ -25,6 +25,13 @@
         <p v-if="errorMsg" class="text-red-600 text-sm">{{ errorMsg }}</p>
         <p v-if="successMsg" class="text-green-600 text-sm">{{ successMsg }}</p>
       </form>
+      <div class="mt-4 flex items-center justify-between text-sm">
+        <NuxtLink to="/majstor/register" class="underline">Registracija</NuxtLink>
+        <NuxtLink to="/majstor/forgot-password" class="underline">Zaboravljena lozinka</NuxtLink>
+      </div>
+      <div class="mt-3 text-center text-sm">
+        <NuxtLink to="/" class="underline">Nazad na početnu stranicu</NuxtLink>
+      </div>
     </div>
   </div>
 </template>
