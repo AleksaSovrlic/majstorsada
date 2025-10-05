@@ -19,11 +19,18 @@ service cloud.firestore {
       allow update: if isAuthenticated() && request.auth.uid == uid;
     }
 
+    // clients: only owner can create/update/read their own profile
+    match /clients/{uid} {
+      allow read: if isAuthenticated() && request.auth.uid == uid;
+      allow create: if isAuthenticated() && request.auth.uid == uid;
+      allow update: if isAuthenticated() && request.auth.uid == uid;
+    }
+
     // jobs:
-    // - anyone may create a job
+    // - only authenticated clients may create (clientId must match auth.uid)
     // - only an authenticated tradesperson may update status, with strict field and transition checks
     match /jobs/{jobId} {
-      allow create: if true;
+      allow create: if isAuthenticated() && request.resource.data.clientId == request.auth.uid;
 
       allow update: if isTradesperson() && isAllowedJobStatusUpdate();
 

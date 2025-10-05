@@ -6,6 +6,10 @@
 
       <form class="mt-6 space-y-5" @submit.prevent="submit">
         <div>
+          <label class="block text-sm text-gray-700 mb-1">Vaš e-mail</label>
+          <input :value="userEmail" type="email" readonly class="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-700" />
+        </div>
+        <div>
           <label class="block text-sm text-gray-700 mb-1">Potreban mi je:</label>
           <select v-model="specializationRequired" required class="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
             <option value="">Izaberite tip majstora</option>
@@ -25,6 +29,9 @@
         <div>
           <label class="block text-sm text-gray-700 mb-1">Kontakt telefon</label>
           <input v-model="contactPhone" type="tel" required class="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="06x xxx xxxx" />
+          <p class="text-sm mt-1" :class="phoneValid ? 'text-green-700' : 'text-red-600'">
+            {{ phoneValid ? 'Broj telefona je validan.' : 'Unesite ispravan broj telefona.' }}
+          </p>
         </div>
         <div>
           <label class="block text-sm text-gray-700 mb-1">Slika (opciono)</label>
@@ -41,12 +48,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useJobStore } from '@/stores/job'
 import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
+import { parsePhoneNumberFromString } from 'libphonenumber-js'
+
+definePageMeta({
+  middleware: ['client-auth']
+})
 
 const router = useRouter()
 const jobStore = useJobStore()
+const authStore = useAuthStore()
 
 const problemDescription = ref('')
 const location = ref('')
@@ -56,6 +70,17 @@ const specializationRequired = ref('')
 
 const submitting = ref(false)
 const errorMsg = ref('')
+
+const userEmail = computed(() => authStore.currentUser?.email || '')
+const phoneValid = computed(() => {
+  if (!contactPhone.value) return false
+  const parsed = parsePhoneNumberFromString(contactPhone.value, 'RS')
+  return parsed ? parsed.isValid() : false
+})
+const e164Phone = computed(() => {
+  const parsed = parsePhoneNumberFromString(contactPhone.value, 'RS')
+  return parsed && parsed.isValid() ? parsed.number : ''
+})
 
 function onFile(e: Event) {
   const input = e.target as HTMLInputElement
@@ -69,10 +94,13 @@ async function submit() {
     if (!specializationRequired.value) {
       throw new Error('Molimo izaberite tip majstora.')
     }
+    if (!phoneValid.value) {
+      throw new Error('Molimo unesite ispravan broj telefona.')
+    }
     await jobStore.createJob({
       problemDescription: problemDescription.value,
       location: location.value,
-      contactPhone: contactPhone.value,
+      contactPhone: e164Phone.value,
       specializationRequired: specializationRequired.value,
       // image upload is out of scope now; pass null/undefined
       imageUrl: undefined

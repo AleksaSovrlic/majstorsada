@@ -30,9 +30,14 @@ function startJobsFeed() {
   stopJobsFeed()
   const { $firestore } = useNuxtApp()
   const col = collection($firestore, 'jobs')
-  const constraints: any[] = [where('status', '==', 'pending')]
+  // Guard: only subscribe when available and specialization is set
+  const isAvailable = tpStore.profile?.status === 'available'
   const spec = tpStore.profile?.specialization
-  if (spec) constraints.push(where('specializationRequired', '==', spec))
+  if (!isAvailable || !spec) {
+    jobs.value = []
+    return
+  }
+  const constraints: any[] = [where('status', '==', 'pending'), where('specializationRequired', '==', spec)]
   const q = query(col, ...constraints)
   unsub = onSnapshot(q, (snap) => {
     jobs.value = snap.docs.map((d) => ({ jobId: d.id, ...(d.data() as any) }))
@@ -54,9 +59,18 @@ onMounted(async () => {
   }
 })
 
-watch(() => tpStore.profile?.specialization, () => {
-  startJobsFeed()
-})
+watch(
+  () => ({ status: tpStore.profile?.status, spec: tpStore.profile?.specialization }),
+  () => {
+    if (tpStore.profile?.status !== 'available') {
+      stopJobsFeed()
+      jobs.value = []
+      return
+    }
+    startJobsFeed()
+  },
+  { deep: false, immediate: true }
+)
 
 onBeforeUnmount(() => {
   stopJobsFeed()
