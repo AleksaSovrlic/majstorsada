@@ -31,6 +31,8 @@ service cloud.firestore {
     // - only an authenticated tradesperson may update status, with strict field and transition checks
     match /jobs/{jobId} {
       allow create: if isAuthenticated() && request.resource.data.clientId == request.auth.uid;
+      // For demo: allow read globally; in production tighten to owner/tradesperson only
+      allow read: if true;
 
       allow update: if isTradesperson() && isAllowedJobStatusUpdate();
 

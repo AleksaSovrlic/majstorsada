@@ -27,6 +27,7 @@ export const useJobStore = defineStore('job', {
         imageUrl: input.imageUrl || null,
         specializationRequired: input.specializationRequired,
         clientId: currentUser.uid,
+        clientEmail: currentUser.email || '',
         status: 'pending',
         createdAt: serverTimestamp()
       }

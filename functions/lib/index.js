@@ -52,9 +52,12 @@ const corsHandler = (0, cors_1.default)({
     origin: (origin, callback) => {
         if (!origin)
             return callback(null, true);
-        const allowed = /^http:\/\/(localhost|127\.0\.0\.1)(:\\d+)?$/.test(origin);
+        const allowed = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
         callback(null, allowed);
-    }
+    },
+    methods: ['POST', 'OPTIONS'],
+    allowedHeaders: ['Authorization', 'Content-Type'],
+    optionsSuccessStatus: 204
 });
 async function verifyBearer(req) {
     try {

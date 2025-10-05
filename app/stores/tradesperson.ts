@@ -35,7 +35,7 @@ export const useTradespersonStore = defineStore('tradesperson', {
       this.unsubscribe()
       const ref = doc($firestore, 'tradespeople', uid)
       this._unsub = onSnapshot(ref, (snap) => {
-        const data = snap.exists() ? ({ uid, ...(snap.data() as any) }) : null
+        const data = snap.exists() ? ({ ...(snap.data() as any), uid }) : null
         console.log('[tradesperson] PODACI STIGLI IZ FIRESTORE-A:', data)
         this.profile = data as unknown as TradespersonProfile | null
         console.log('[tradesperson] Profil UPISAN u store:', this.profile)
@@ -46,7 +46,7 @@ export const useTradespersonStore = defineStore('tradesperson', {
       this.unsubscribe()
       const ref = doc($firestore, 'tradespeople', uid)
       this._unsub = onSnapshot(ref, (snap) => {
-        this.profile = snap.exists() ? ({ uid, ...(snap.data() as any) } as unknown as TradespersonProfile) : null
+        this.profile = snap.exists() ? ({ ...(snap.data() as any), uid } as unknown as TradespersonProfile) : null
       })
     },
     unsubscribe() {
@@ -63,8 +63,9 @@ export const useTradespersonStore = defineStore('tradesperson', {
         uid: profile?.uid
       })
       if (!profile) return
-      const { $firestore } = useNuxtApp()
-      const ref = doc($firestore, 'tradespeople', profile.uid)
+      const { $firestore, $firebaseAuth } = useNuxtApp() as any
+      const safeUid = ($firebaseAuth?.currentUser?.uid) || profile.uid
+      const ref = doc($firestore, 'tradespeople', safeUid)
       console.log('[tradesperson] updateDoc about to run', {
         docPath: `tradespeople/${profile.uid}`,
         status: isAvailable ? 'available' : 'unavailable'

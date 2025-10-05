@@ -18,7 +18,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { isSignInWithEmailLink, signInWithEmailLink } from 'firebase/auth'
 import { useAuthStore } from '@/stores/auth'
@@ -53,8 +53,9 @@ onMounted(async () => {
       needsEmail.value = true
     }
   } else {
-    // Not an email link; go home or intended
-    redirectAfter()
+    // Not an email link; show error and let user go back to login
+    errorMsg.value = 'Link nije validan ili je istekao. Vratite se na prijavu i zatražite novi link.'
+    needsEmail.value = false
   }
 })
 
@@ -67,7 +68,8 @@ async function completeSignIn() {
     const cred = await signInWithEmailLink($firebaseAuth, email.value, href)
     localStorage.removeItem('emailForSignIn')
     await ensureClientProfile(cred.user.uid, cred.user.email || email.value)
-    await authStore.ensureAuthReady()
+    // Ensure auth.currentUser is propagated before redirect
+    await authStore.waitUntilLoggedIn()
     redirectAfter()
   } catch (e: any) {
     if (e?.code === 'auth/invalid-action-code') {
@@ -84,6 +86,11 @@ function redirectAfter() {
   const from = (route.query.from as string) || sessionStorage.getItem('postAuthRedirect') || '/zahtev'
   router.replace(from)
 }
+
+const loginHref = computed(() => {
+  const from = (route.query.from as string) || sessionStorage.getItem('postAuthRedirect') || '/zahtev'
+  return `/login?from=${encodeURIComponent(from)}`
+})
 </script>
 
 

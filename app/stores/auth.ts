@@ -23,14 +23,27 @@ export const useAuthStore = defineStore('auth', {
         return this._initPromise
       }
       const { $firebaseAuth } = useNuxtApp()
-      this._initPromise = new Promise<void>((resolve) => {
+      this._initPromise = (async () => {
+        // Wait for initial auth state to load from persistence (multi-tab safe)
+        if (typeof ($firebaseAuth as any).authStateReady === 'function') {
+          await ($firebaseAuth as any).authStateReady()
+        } else {
+          // Fallback: wait one onAuthStateChanged tick
+          await new Promise<void>((resolve) => {
+            const unsub = onAuthStateChanged($firebaseAuth, () => {
+              unsub()
+              resolve()
+            })
+          })
+        }
+        this.currentUser = $firebaseAuth.currentUser
+        this.isInitialized = true
+        // Attach a persistent listener to keep currentUser in sync
         onAuthStateChanged($firebaseAuth, (user) => {
           this.currentUser = user
-          this.isInitialized = true
-          resolve()
-          this._initPromise = null
         })
-      })
+        this._initPromise = null
+      })()
       return this._initPromise
     },
     async signIn(email: string, password: string): Promise<void> {
@@ -49,6 +62,25 @@ export const useAuthStore = defineStore('auth', {
       const { $firebaseAuth } = useNuxtApp()
       await firebaseSignOut($firebaseAuth)
       this.currentUser = null
+    },
+    async waitUntilLoggedIn(timeoutMs = 5000): Promise<void> {
+      if (this.currentUser) return
+      const { $firebaseAuth } = useNuxtApp()
+      await new Promise<void>((resolve, reject) => {
+        let resolved = false
+        const timeout = setTimeout(() => {
+          if (!resolved) reject(new Error('Auth timeout while waiting for login'))
+        }, timeoutMs)
+        const unsub = onAuthStateChanged($firebaseAuth, (user) => {
+          if (user) {
+            this.currentUser = user
+            resolved = true
+            clearTimeout(timeout)
+            unsub()
+            resolve()
+          }
+        })
+      })
     }
   }
 })

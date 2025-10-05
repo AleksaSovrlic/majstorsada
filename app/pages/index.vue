@@ -13,7 +13,12 @@
       </div>
 
       <div class="mt-10 text-sm text-gray-500">
-        <NuxtLink to="/majstor/login" class="underline">Prijava za majstore</NuxtLink>
+        <ClientOnly>
+          <NuxtLink v-if="!isLoggedIn" to="/majstor/login" class="underline">Prijava za majstore</NuxtLink>
+          <template #fallback>
+            <span class="invisible">placeholder</span>
+          </template>
+        </ClientOnly>
       </div>
     </div>
   </div>
@@ -24,10 +29,11 @@ import { computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
-await auth.ensureAuthReady()
 
 const ctaHref = computed(() => {
   return auth.currentUser ? '/zahtev' : '/login?from=zahtev'
 })
+
+const isLoggedIn = computed(() => !!auth.currentUser)
 </script>
 
