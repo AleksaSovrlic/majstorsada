@@ -16,6 +16,13 @@
           <input v-model="email" type="email" required class="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="vas@email.com" />
         </div>
         <div>
+          <label class="block text-sm text-gray-700 mb-1">Kontakt telefon</label>
+          <input v-model="phone" type="tel" required class="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="06x xxx xxxx" />
+          <p class="text-sm mt-1" :class="phoneValid ? 'text-green-700' : 'text-red-600'">
+            {{ phoneValid ? 'Broj telefona je validan.' : 'Unesite ispravan broj telefona.' }}
+          </p>
+        </div>
+        <div>
           <label class="block text-sm text-gray-700 mb-1">Lozinka</label>
           <input v-model="password" type="password" minlength="8" required class="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="min 8 karaktera" />
         </div>
@@ -29,7 +36,7 @@
           </select>
         </div>
 
-        <button type="submit" :disabled="loading" class="w-full rounded-md bg-blue-600 text-white py-2.5 font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.99]">
+        <button type="submit" :disabled="loading || !phoneValid" class="w-full rounded-md bg-blue-600 text-white py-2.5 font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.99]">
           {{ loading ? 'Kreiranje naloga...' : 'Registruj se' }}
         </button>
         <p v-if="errorMsg" class="text-red-600 text-sm">{{ errorMsg }}</p>
@@ -49,6 +56,7 @@ import { useRouter } from 'vue-router'
 import { createUserWithEmailAndPassword } from 'firebase/auth'
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { useAuthStore } from '@/stores/auth'
+import { parsePhoneNumberFromString } from 'libphonenumber-js'
 
 definePageMeta({ layout: false })
 
@@ -57,11 +65,22 @@ const authStore = useAuthStore()
 
 const displayName = ref('')
 const email = ref('')
+const phone = ref('')
 const password = ref('')
 const specialization = ref('')
 const loading = ref(false)
 const errorMsg = ref('')
 const successMsg = ref('')
+
+const phoneValid = computed(() => {
+  if (!phone.value) return false
+  const parsed = parsePhoneNumberFromString(phone.value, 'RS')
+  return parsed ? parsed.isValid() : false
+})
+const e164Phone = computed(() => {
+  const parsed = parsePhoneNumberFromString(phone.value, 'RS')
+  return parsed && parsed.isValid() ? parsed.number : ''
+})
 
 onMounted(async () => {
   await authStore.ensureAuthReady()
@@ -76,12 +95,16 @@ async function submit() {
   loading.value = true
   try {
     const { $firebaseAuth, $firestore } = useNuxtApp()
+    if (!phoneValid.value) {
+      throw new Error('Molimo unesite ispravan broj telefona.')
+    }
     const cred = await createUserWithEmailAndPassword($firebaseAuth, email.value, password.value)
     const uid = cred.user.uid
     await setDoc(doc($firestore, 'tradespeople', uid), {
       uid,
       displayName: displayName.value,
-      phoneNumber: '',
+      phoneNumber: e164Phone.value,
+      email: cred.user.email || email.value,
       specialization: specialization.value,
       status: 'unavailable',
       balanceTokens: 0,
