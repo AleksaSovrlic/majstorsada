@@ -36,7 +36,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.notifyTradespeople = exports.updateTokensByAdmin = exports.buyTokens = exports.acceptJob = exports.health = void 0;
+exports.notifyTradespeople = exports.updateTokensByAdmin = exports.buyTokens = exports.markJobAsComplete = exports.acceptJob = exports.health = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const firebase_functions_1 = require("firebase-functions");
 const logger = __importStar(require("firebase-functions/logger"));
@@ -130,6 +130,48 @@ exports.acceptJob = (0, https_1.onRequest)({ region: 'europe-west3' }, (req, res
             else {
                 logger.error('acceptJob failed (unexpected)', { message, stack: error?.stack });
             }
+            return res.status(status).send({ error: message });
+        }
+    });
+});
+exports.markJobAsComplete = (0, https_1.onRequest)({ region: 'europe-west3' }, (req, res) => {
+    corsHandler(req, res, async () => {
+        if (req.method === 'OPTIONS')
+            return res.status(204).send('');
+        if (req.method !== 'POST')
+            return res.status(405).send({ error: 'Method Not Allowed' });
+        const auth = await verifyBearer(req);
+        if (!auth)
+            return res.status(401).send({ error: 'Authentication required.' });
+        const data = (req.body?.data || {});
+        const jobId = data?.jobId;
+        if (!jobId || typeof jobId !== 'string') {
+            return res.status(400).send({ error: 'Missing or invalid jobId.' });
+        }
+        try {
+            logger.info('markJobAsComplete request', { jobId, uid: auth.uid });
+            const db = (0, firestore_1.getFirestore)();
+            const jobRef = db.collection('jobs').doc(jobId);
+            await db.runTransaction(async (tx) => {
+                const snap = await tx.get(jobRef);
+                if (!snap.exists) {
+                    return Promise.reject({ code: 404, message: 'Job does not exist.' });
+                }
+                const job = snap.data();
+                if (job.acceptedByTradespersonId !== auth.uid) {
+                    return Promise.reject({ code: 403, message: 'Only assigned tradesperson can complete the job.' });
+                }
+                if (job.status !== 'accepted') {
+                    return Promise.reject({ code: 412, message: 'Job is not in an active state.' });
+                }
+                tx.update(jobRef, { status: 'completed', completedAt: firestore_1.FieldValue.serverTimestamp() });
+            });
+            logger.info('markJobAsComplete success', { jobId, uid: auth.uid });
+            return res.status(200).send({ ok: true, jobId });
+        }
+        catch (error) {
+            const status = error?.code && Number.isFinite(error.code) ? error.code : 500;
+            const message = error?.message || 'Unexpected error during markJobAsComplete.';
             return res.status(status).send({ error: message });
         }
     });

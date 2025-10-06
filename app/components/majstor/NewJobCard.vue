@@ -9,7 +9,7 @@
     <div class="pt-2 flex items-center gap-2">
       <button
         class="px-4 py-2 rounded-md bg-green-600 text-white font-medium hover:bg-green-700 active:scale-[0.99]"
-        :disabled="accepting"
+        :disabled="accepting || acceptedOnce"
         @click="onAccept"
       >{{ accepting ? 'Prihvatanje...' : 'Prihvati' }}</button>
       <button
@@ -34,11 +34,12 @@ interface JobItem {
 }
 
 const props = defineProps<{ job: JobItem }>()
-defineEmits<{ (e: 'dismiss', jobId: string): void }>()
+const emit = defineEmits<{ (e: 'dismiss', jobId: string): void; (e: 'accepted', job: JobItem): void }>()
 
 const accepting = ref(false)
 const errorMsg = ref('')
 const successMsg = ref('')
+const acceptedOnce = ref(false)
 
 async function onAccept() {
   accepting.value = true
@@ -71,8 +72,16 @@ async function onAccept() {
       throw new Error(json?.error || 'Greška pri prihvatanju posla.')
     }
     successMsg.value = 'Posao prihvaćen.'
+    acceptedOnce.value = true
+    emit('accepted', props.job)
   } catch (e: any) {
-    errorMsg.value = e?.message || 'Greška pri prihvatanju posla.'
+    const msg = e?.message || 'Greška pri prihvatanju posla.'
+    if (/not available/i.test(msg) || /precondition/i.test(msg) || /412/.test(msg)) {
+      errorMsg.value = 'Posao je već prihvaćen od drugog majstora.'
+      emit('dismiss', props.job.jobId)
+    } else {
+      errorMsg.value = msg
+    }
   } finally {
     accepting.value = false
   }

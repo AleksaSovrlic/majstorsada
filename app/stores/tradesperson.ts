@@ -9,6 +9,7 @@ export interface TradespersonProfile {
   status: 'available' | 'unavailable'
   balanceTokens: number
   notificationPreference: 'push' | 'viber' | 'sms'
+  dismissedJobs?: string[]
 }
 
 interface TradespersonState {
@@ -81,6 +82,13 @@ export const useTradespersonStore = defineStore('tradesperson', {
       const { $firestore } = useNuxtApp()
       const ref = doc($firestore, 'tradespeople', profile.uid)
       await updateDoc(ref, { notificationPreference: pref })
+    },
+    async dismissJob(jobId: string) {
+      const profile = this.profile
+      if (!profile) return
+      const { $firestore } = useNuxtApp()
+      const ref = doc($firestore, 'tradespeople', profile.uid)
+      await updateDoc(ref, { dismissedJobs: (await import('firebase/firestore')).arrayUnion(jobId) })
     }
   }
 })

@@ -105,6 +105,48 @@ export const acceptJob = onRequest({ region: 'europe-west3' }, (req, res) => {
   })
 })
 
+export const markJobAsComplete = onRequest({ region: 'europe-west3' }, (req, res) => {
+  corsHandler(req, res, async () => {
+    if (req.method === 'OPTIONS') return res.status(204).send('')
+    if (req.method !== 'POST') return res.status(405).send({ error: 'Method Not Allowed' })
+
+    const auth = await verifyBearer(req)
+    if (!auth) return res.status(401).send({ error: 'Authentication required.' })
+
+    const data = (req.body?.data || {}) as { jobId?: string }
+    const jobId = data?.jobId
+    if (!jobId || typeof jobId !== 'string') {
+      return res.status(400).send({ error: 'Missing or invalid jobId.' })
+    }
+
+    try {
+      logger.info('markJobAsComplete request', { jobId, uid: auth.uid })
+      const db = getFirestore()
+      const jobRef = db.collection('jobs').doc(jobId)
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(jobRef)
+        if (!snap.exists) {
+          return Promise.reject({ code: 404, message: 'Job does not exist.' })
+        }
+        const job = snap.data() as any
+        if (job.acceptedByTradespersonId !== auth.uid) {
+          return Promise.reject({ code: 403, message: 'Only assigned tradesperson can complete the job.' })
+        }
+        if (job.status !== 'accepted') {
+          return Promise.reject({ code: 412, message: 'Job is not in an active state.' })
+        }
+        tx.update(jobRef, { status: 'completed', completedAt: FieldValue.serverTimestamp() })
+      })
+      logger.info('markJobAsComplete success', { jobId, uid: auth.uid })
+      return res.status(200).send({ ok: true, jobId })
+    } catch (error: any) {
+      const status = error?.code && Number.isFinite(error.code) ? error.code : 500
+      const message = error?.message || 'Unexpected error during markJobAsComplete.'
+      return res.status(status).send({ error: message })
+    }
+  })
+})
+
 export const buyTokens = onRequest({ region: 'europe-west3' }, (req, res) => {
   corsHandler(req, res, async () => {
     if (req.method === 'OPTIONS') return res.status(204).send('')
