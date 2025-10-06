@@ -39,9 +39,12 @@ export const useAuthStore = defineStore('auth', {
         this.currentUser = $firebaseAuth.currentUser
         this.isInitialized = true
         // Attach a persistent listener to keep currentUser in sync
-        onAuthStateChanged($firebaseAuth, (user) => {
-          this.currentUser = user
-        })
+        if (!(this as any)._listenerAttached) {
+          onAuthStateChanged($firebaseAuth, (user) => {
+            this.currentUser = user
+          })
+          ;(this as any)._listenerAttached = true
+        }
         this._initPromise = null
       })()
       return this._initPromise
@@ -62,25 +65,6 @@ export const useAuthStore = defineStore('auth', {
       const { $firebaseAuth } = useNuxtApp()
       await firebaseSignOut($firebaseAuth)
       this.currentUser = null
-    },
-    async waitUntilLoggedIn(timeoutMs = 5000): Promise<void> {
-      if (this.currentUser) return
-      const { $firebaseAuth } = useNuxtApp()
-      await new Promise<void>((resolve, reject) => {
-        let resolved = false
-        const timeout = setTimeout(() => {
-          if (!resolved) reject(new Error('Auth timeout while waiting for login'))
-        }, timeoutMs)
-        const unsub = onAuthStateChanged($firebaseAuth, (user) => {
-          if (user) {
-            this.currentUser = user
-            resolved = true
-            clearTimeout(timeout)
-            unsub()
-            resolve()
-          }
-        })
-      })
     }
   }
 })

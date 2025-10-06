@@ -26,6 +26,14 @@ service cloud.firestore {
       allow update: if isAuthenticated() && request.auth.uid == uid;
     }
 
+    // admins: role documents
+    match /admins/{uid} {
+      // Admins can see their own admin doc; others cannot read
+      allow read: if isAuthenticated() && request.auth.uid == uid;
+      // Only existing admins may create/update/delete docs in this collection
+      allow create, update, delete: if isAuthenticated() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
     // jobs:
     // - only authenticated clients may create (clientId must match auth.uid)
     // - only an authenticated tradesperson may update status, with strict field and transition checks

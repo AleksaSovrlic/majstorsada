@@ -23,10 +23,9 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { doc, getDoc } from 'firebase/firestore'
 
 definePageMeta({ layout: false })
-
-const ADMIN_EMAIL = 'aleksa.admin@majstorsada.com'
 
 const auth = useAuthStore()
 const email = ref('')
@@ -36,8 +35,12 @@ const errorMessage = ref('')
 
 onMounted(async () => {
   await auth.ensureAuthReady()
-  if (auth.currentUser?.email === ADMIN_EMAIL) {
-    await navigateTo('/admin/dashboard')
+  if (auth.currentUser) {
+    const { $firestore } = useNuxtApp()
+    const snap = await getDoc(doc($firestore, 'admins', auth.currentUser.uid))
+    if (snap.exists()) {
+      await navigateTo('/admin/dashboard')
+    }
   }
 })
 
@@ -46,9 +49,16 @@ async function onSubmit() {
   loading.value = true
   try {
     await auth.signIn(email.value, password.value)
-    if (auth.currentUser?.email !== ADMIN_EMAIL) {
-      errorMessage.value = 'Niste admin.'
-      await auth.signOut()
+    await auth.ensureAuthReady()
+    const { $firestore } = useNuxtApp()
+    const user = auth.currentUser
+    if (!user) {
+      errorMessage.value = 'Prijava nije dovršena. Pokušajte ponovo.'
+      return
+    }
+    const snap = await getDoc(doc($firestore, 'admins', user.uid))
+    if (!snap.exists()) {
+      errorMessage.value = 'Nemate administratorske privilegije.'
       return
     }
     await navigateTo('/admin/dashboard')

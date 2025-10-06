@@ -68,8 +68,8 @@ async function completeSignIn() {
     const cred = await signInWithEmailLink($firebaseAuth, email.value, href)
     localStorage.removeItem('emailForSignIn')
     await ensureClientProfile(cred.user.uid, cred.user.email || email.value)
-    // Ensure auth.currentUser is propagated before redirect
-    await authStore.waitUntilLoggedIn()
+    // Ensure auth.currentUser is available before redirect
+    await authStore.ensureAuthReady()
     redirectAfter()
   } catch (e: any) {
     if (e?.code === 'auth/invalid-action-code') {

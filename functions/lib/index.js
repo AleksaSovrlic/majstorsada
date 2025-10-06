@@ -166,8 +166,10 @@ exports.updateTokensByAdmin = (0, https_1.onRequest)({ region: 'europe-west3' },
                 return res.status(401).send({ error: 'Authentication required.' });
             }
             const decoded = await (0, auth_1.getAuth)().verifyIdToken(idToken);
-            const email = (decoded.email || '').toLowerCase();
-            if (email !== 'aleksa.admin@majstorsada.com') {
+            // Check admins collection for role
+            const db = (0, firestore_1.getFirestore)();
+            const adminDoc = await db.collection('admins').doc(decoded.uid).get();
+            if (!adminDoc.exists) {
                 return res.status(403).send({ error: 'Admin privileges required.' });
             }
             const { uid, delta: rawDelta } = (req.body?.data || {});
@@ -175,7 +177,6 @@ exports.updateTokensByAdmin = (0, https_1.onRequest)({ region: 'europe-west3' },
             if (!uid || typeof uid !== 'string' || !Number.isFinite(delta) || delta === 0) {
                 return res.status(400).send({ error: 'Invalid uid or delta provided.' });
             }
-            const db = (0, firestore_1.getFirestore)();
             const ref = db.collection('tradespeople').doc(uid);
             await db.runTransaction(async (tx) => {
                 const snap = await tx.get(ref);

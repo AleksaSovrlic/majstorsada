@@ -69,8 +69,8 @@ async function callUpdate(delta: number) {
     const config = useRuntimeConfig()
     const projectId = config.public.firebase.projectId || 'majstorsada-18a99'
     const region = config.public.firebase.functionsRegion || 'europe-west3'
-    const base = process.env.NODE_ENV === 'development'
-      ? `http://127.0.0.1:5501/${projectId}/${region}`
+  const base = process.env.NODE_ENV === 'development'
+    ? `http://localhost:5501/${projectId}/${region}`
       : `https://${region}-${projectId}.cloudfunctions.net`
 
     const resp = await fetch(`${base}/updateTokensByAdmin`, {
