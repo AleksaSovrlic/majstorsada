@@ -8,6 +8,7 @@
             <th class="text-left p-3 font-medium text-gray-700">Ime</th>
             <th class="text-left p-3 font-medium text-gray-700">Email</th>
             <th class="text-left p-3 font-medium text-gray-700">Stanje Žetona</th>
+            <th class="text-left p-3 font-medium text-gray-700">Ocena</th>
             <th class="text-left p-3 font-medium text-gray-700">Akcije</th>
           </tr>
         </thead>
@@ -16,6 +17,7 @@
             <td class="p-3">{{ t.displayName || '—' }}</td>
             <td class="p-3">{{ t.email || '—' }}</td>
             <td class="p-3">{{ t.balanceTokens ?? 0 }}</td>
+            <td class="p-3">{{ (t as any).averageRating ? `${(t as any).averageRating} ★ (${(t as any).ratingCount ?? 0})` : '—' }}</td>
             <td class="p-3">
               <NuxtLink class="text-blue-600 hover:underline" :to="`/admin/majstor/${t.uid}`">Otvori</NuxtLink>
             </td>

@@ -10,6 +10,9 @@ export interface TradespersonProfile {
   balanceTokens: number
   notificationPreference: 'push' | 'viber' | 'sms'
   dismissedJobs?: string[]
+  ratingSum?: number
+  ratingCount?: number
+  averageRating?: number
 }
 
 interface TradespersonState {

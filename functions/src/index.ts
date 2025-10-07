@@ -92,7 +92,7 @@ export const acceptJob = onRequest({ region: 'europe-west3' }, (req, res) => {
       })
 
       logger.info('acceptJob success', result)
-      return res.status(200).send({ ok: true, ...result })
+      return res.status(200).send({ ok: true, jobId: result?.jobId, acceptedBy: (result as any)?.acceptedBy })
     } catch (error: any) {
       const status = error?.code && Number.isFinite(error.code) ? error.code : 500
       const message = error?.message || 'Unexpected error during acceptJob.'
@@ -101,6 +101,89 @@ export const acceptJob = onRequest({ region: 'europe-west3' }, (req, res) => {
       } else {
         logger.error('acceptJob failed (unexpected)', { message, stack: error?.stack })
       }
+      return res.status(status).send({ error: message })
+    }
+  })
+})
+
+export const submitJobRating = onRequest({ region: 'europe-west3' }, (req, res) => {
+  corsHandler(req, res, async () => {
+    if (req.method === 'OPTIONS') return res.status(204).send('')
+    if (req.method !== 'POST') return res.status(405).send({ error: 'Method Not Allowed' })
+
+    const auth = await verifyBearer(req)
+    if (!auth) return res.status(401).send({ error: 'Authentication required.' })
+
+    const data = (req.body?.data || {}) as { jobId?: string; stars?: number; comment?: string }
+    const jobId = data?.jobId
+    const stars = Math.trunc(Number(data?.stars))
+    const comment = (data?.comment || '').toString().slice(0, 500)
+    if (!jobId || typeof jobId !== 'string' || !(stars >= 1 && stars <= 5)) {
+      return res.status(400).send({ error: 'Missing or invalid jobId/stars.' })
+    }
+
+    try {
+      const db = getFirestore()
+      const jobRef = db.collection('jobs').doc(jobId)
+      logger.info('submitJobRating incoming', { jobId, uid: auth.uid, stars, hasComment: !!comment })
+      const result = await db.runTransaction(async (tx) => {
+        // 1) READ job
+        const snap = await tx.get(jobRef)
+        if (!snap.exists) return Promise.reject({ code: 404, message: 'Job does not exist.' })
+        const job = snap.data() as any
+        logger.info('submitJobRating fetched job', {
+          status: job?.status,
+          clientId: job?.clientId,
+          acceptedByTradespersonId: job?.acceptedByTradespersonId,
+          hasRating: !!job?.rating
+        })
+        if (job.clientId !== auth.uid) return Promise.reject({ code: 403, message: 'Forbidden.' })
+        if (job.status !== 'completed') return Promise.reject({ code: 412, message: 'Job not completed.' })
+        if (job.rating) {
+          // Idempotent behavior: if the same client already rated, treat as success
+          if (job.ratedByClientId === auth.uid) {
+            return { ok: true, alreadyRated: true }
+          }
+          return Promise.reject({ code: 409, message: 'Already rated.' })
+        }
+        const tpUid = job.acceptedByTradespersonId
+        if (!tpUid) return Promise.reject({ code: 412, message: 'Job missing acceptedBy.' })
+
+        // 2) READ tradesperson aggregates BEFORE any writes
+        const tpRef = db.collection('tradespeople').doc(tpUid)
+        const tpSnap = await tx.get(tpRef)
+        if (!tpSnap.exists) return Promise.reject({ code: 404, message: 'Tradesperson not found.' })
+        const currentSum = Number(tpSnap.data()?.ratingSum ?? 0)
+        const currentCount = Number(tpSnap.data()?.ratingCount ?? 0)
+        const sum = currentSum + stars
+        const count = currentCount + 1
+        const avg = Math.round((sum / count) * 100) / 100
+        logger.info('submitJobRating aggregates', { tpUid, sum, count, avg })
+
+        // 3) WRITES after all reads
+        tx.update(jobRef, {
+          rating: stars,
+          ratingComment: comment || null,
+          ratingAt: FieldValue.serverTimestamp(),
+          ratedByClientId: auth.uid
+        })
+        tx.update(tpRef, { ratingSum: sum, ratingCount: count, averageRating: avg })
+        return { ok: true, averageRating: avg, ratingCount: count }
+      })
+      return res.status(200).send({ ok: true, averageRating: (result as any)?.averageRating, ratingCount: (result as any)?.ratingCount, alreadyRated: (result as any)?.alreadyRated === true })
+    } catch (error: any) {
+      const stringCode: string | undefined = typeof error?.code === 'string' ? error.code : undefined
+      const statusFromString = stringCode ? ({
+        'not-found': 404,
+        'failed-precondition': 412,
+        'permission-denied': 403,
+        'already-exists': 409,
+      } as Record<string, number>)[stringCode] : undefined
+      const status = Number.isFinite(error?.code) ? error.code : (statusFromString || 500)
+      const message = error?.message || 'Unexpected error during submitJobRating.'
+      const payload = { status, message, code: error?.code, stack: error?.stack }
+      if (status !== 500) logger.warn('submitJobRating failed (expected)', payload)
+      else logger.error('submitJobRating failed (unexpected)', payload)
       return res.status(status).send({ error: message })
     }
   })
