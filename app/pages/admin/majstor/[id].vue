@@ -23,13 +23,44 @@
       <p v-if="errorMessage" class="text-sm text-red-600 mt-3">{{ errorMessage }}</p>
       <p v-if="successMessage" class="text-sm text-green-600 mt-3">{{ successMessage }}</p>
     </div>
+
+    <div class="bg-white border rounded-lg p-4">
+      <h3 class="text-md font-semibold mb-3">Istorija poslova</h3>
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-gray-50">
+            <tr>
+              <th class="text-left p-3 font-medium text-gray-700">Datum</th>
+              <th class="text-left p-3 font-medium text-gray-700">Status</th>
+              <th class="text-left p-3 font-medium text-gray-700">Opis</th>
+              <th class="text-left p-3 font-medium text-gray-700">Lokacija</th>
+              <th class="text-left p-3 font-medium text-gray-700">Telefon</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="j in jobs" :key="j.jobId" class="border-t">
+              <td class="p-3">{{ (j.acceptedAt || j.createdAt)?.toDate?.() ? (j.acceptedAt || j.createdAt).toDate().toLocaleString() : '—' }}</td>
+              <td class="p-3">
+                <span :class="j.status === 'completed' ? 'text-green-700' : j.status === 'accepted' ? 'text-blue-700' : 'text-gray-700'">{{ j.status }}</span>
+              </td>
+              <td class="p-3">{{ j.problemDescription || '—' }}</td>
+              <td class="p-3">{{ j.location || '—' }}</td>
+              <td class="p-3">{{ j.contactPhone || '—' }}</td>
+            </tr>
+            <tr v-if="jobs.length === 0">
+              <td colspan="5" class="p-6 text-center text-gray-500">Nema poslova.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { doc, onSnapshot } from 'firebase/firestore'
+import { doc, onSnapshot, collection, query, where, orderBy } from 'firebase/firestore'
 import { useAuthStore } from '@/stores/auth'
 
 definePageMeta({ layout: 'admin', middleware: 'admin-auth' })
@@ -49,6 +80,20 @@ const busy = ref(false)
 const errorMessage = ref('')
 const successMessage = ref('')
 let unsub: (() => void) | null = null
+let unsubJobs: (() => void) | null = null
+
+type AdminJob = {
+  jobId: string
+  status: 'pending' | 'accepted' | 'completed' | 'cancelled'
+  problemDescription?: string
+  location?: string
+  specializationRequired?: string
+  contactPhone?: string
+  createdAt?: any
+  acceptedAt?: any
+  completedAt?: any
+}
+const jobs = ref<AdminJob[]>([])
 
 async function callUpdate(delta: number) {
   if (!profile.value) return
@@ -116,12 +161,23 @@ onMounted(() => {
     }
     loading.value = false
   })
+
+  // Jobs history for this tradesperson (real-time)
+  const col = collection($firestore, 'jobs')
+  const q = query(col, where('acceptedByTradespersonId', '==', id), orderBy('createdAt', 'desc'))
+  unsubJobs = onSnapshot(q, (snap) => {
+    jobs.value = snap.docs.map((d) => ({ jobId: d.id, ...(d.data() as any) })) as AdminJob[]
+  })
 })
 
 onBeforeUnmount(() => {
   if (unsub) {
     unsub()
     unsub = null
+  }
+  if (unsubJobs) {
+    unsubJobs()
+    unsubJobs = null
   }
 })
 </script>

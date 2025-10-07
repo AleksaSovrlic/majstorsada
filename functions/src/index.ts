@@ -81,7 +81,8 @@ export const acceptJob = onRequest({ region: 'europe-west3' }, (req, res) => {
 
         tx.update(jobRef, {
           status: 'accepted',
-          acceptedByTradespersonId: auth.uid
+          acceptedByTradespersonId: auth.uid,
+          acceptedAt: FieldValue.serverTimestamp()
         })
         tx.update(tradespersonRef, {
           balanceTokens: FieldValue.increment(-1)
