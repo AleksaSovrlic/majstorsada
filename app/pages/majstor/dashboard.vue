@@ -1,5 +1,8 @@
 <template>
   <div class="space-y-6">
+    <ClientOnly>
+      <NotificationsBanner />
+    </ClientOnly>
     <AvailabilityToggle />
     <TokenBalance />
 
@@ -50,6 +53,7 @@ import AvailabilityToggle from '@/components/majstor/AvailabilityToggle.vue'
 import TokenBalance from '@/components/majstor/TokenBalance.vue'
 import NewJobCard from '@/components/majstor/NewJobCard.vue'
 import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
+import NotificationsBanner from '@/components/majstor/NotificationsBanner.vue'
 import { collection, onSnapshot, query, where } from 'firebase/firestore'
 import { useAuthStore } from '@/stores/auth'
 import { useTradespersonStore } from '@/stores/tradesperson'
@@ -139,6 +143,11 @@ onMounted(async () => {
   if (auth.currentUser) {
     tpStore.subscribeProfile(auth.currentUser.uid)
   }
+  // Proaktivna sinhronizacija FCM tokena
+  if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    const nuxt = useNuxtApp() as any
+    await nuxt.$fcm?.getAndSaveFcmToken?.()
+  }
   startOwnedFeeds()
 })
 
@@ -158,6 +167,10 @@ watch(
 watch(() => auth.currentUser?.uid, () => {
   // Re-subscribe owned feeds if UID becomes available or changes
   startOwnedFeeds()
+  if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    const nuxt = useNuxtApp() as any
+    nuxt.$fcm?.getAndSaveFcmToken?.()
+  }
 })
 
 watch(() => tpStore.profile?.dismissedJobs, () => {

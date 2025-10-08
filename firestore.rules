@@ -17,6 +17,11 @@ service cloud.firestore {
       allow read: if isAuthenticated() && request.auth.uid == uid;
       allow create: if isAuthenticated() && request.auth.uid == uid;
       allow update: if isAuthenticated() && request.auth.uid == uid;
+
+      // fcmTokens subcollection: owner-only full control
+      match /fcmTokens/{tokenId} {
+        allow read, create, update, delete: if isAuthenticated() && request.auth.uid == uid;
+      }
     }
 
     // clients: only owner can create/update/read their own profile

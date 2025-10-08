@@ -2,12 +2,37 @@ import { HttpsError, onRequest } from 'firebase-functions/v2/https'
 import { onDocumentCreated } from 'firebase-functions/v2/firestore'
 import { region } from 'firebase-functions'
 import * as logger from 'firebase-functions/logger'
-import { initializeApp } from 'firebase-admin/app'
+import { initializeApp, cert, applicationDefault } from 'firebase-admin/app'
 import { FieldValue, getFirestore } from 'firebase-admin/firestore'
 import { getAuth } from 'firebase-admin/auth'
 import cors from 'cors'
+import { getMessaging } from 'firebase-admin/messaging'
+import path from 'path'
+import fs from 'fs'
 
-initializeApp()
+// Conditional Admin initialization: dev uses local service account, cloud uses default
+(() => {
+  const isLocal = process.env.FUNCTIONS_EMULATOR === 'true' || process.env.NODE_ENV === 'development'
+  try {
+    if (isLocal) {
+      const keyPath = path.join(__dirname, '..', '.keys', 'serviceAccountKey.json')
+      const json = JSON.parse(fs.readFileSync(keyPath, 'utf-8'))
+      initializeApp({ credential: cert(json as any) })
+      logger.info('Admin initialized with local service account key')
+    } else {
+      // In cloud, rely on the service account attached to the runtime
+      try {
+        initializeApp({ credential: applicationDefault() })
+      } catch {
+        initializeApp()
+      }
+    }
+  } catch (e: any) {
+    // Fallback to default to avoid crashing cold start; errors will surface in operations
+    logger.error('Admin init fallback', { message: e?.message })
+    try { initializeApp() } catch {}
+  }
+})()
 
 export const health = onRequest({ region: 'europe-west3' }, (req, res) => {
   res.status(200).send({ ok: true, service: 'functions', env: process.env.NODE_ENV || 'development' })
@@ -323,6 +348,10 @@ export const notifyTradespeople = region('europe-west3')
       logger.info('notifyTradespeople: Job without specializationRequired, skipping')
       return
     }
+    if (jobData.status && jobData.status !== 'pending') {
+      logger.info('notifyTradespeople: Job not pending, skipping', { status: jobData.status })
+      return
+    }
 
     try {
       const snapshot = await db
@@ -335,13 +364,70 @@ export const notifyTradespeople = region('europe-west3')
         count: snapshot.size,
         specializationRequired
       })
-      snapshot.forEach((doc) => {
-        const data = doc.data() as any
-        if (data?.status !== 'available') {
-          return
+      type TokenRef = { token: string; refPath: string }
+      const tokenRefs: TokenRef[] = []
+      for (const tpSnap of snapshot.docs) {
+        const tpId = tpSnap.id
+        const tSnap = await db.collection('tradespeople').doc(tpId).collection('fcmTokens').get()
+        tSnap.forEach((d) => {
+          const token = (d.data() as any)?.token
+          if (token) tokenRefs.push({ token, refPath: d.ref.path })
+        })
+      }
+
+      if (tokenRefs.length === 0) {
+        logger.info('notifyTradespeople: no tokens to notify')
+        return
+      }
+
+      const baseUrl = process.env.WEB_BASE_URL || (process.env.NODE_ENV === 'development' ? 'http://localhost:3333' : '')
+      const link = baseUrl ? `${baseUrl}/majstor/dashboard` : '/majstor/dashboard'
+      const messageBase = {
+        // strict data-only payload; SW renders
+        data: {
+          title: 'Novi posao dostupan',
+          body: `${jobData.specializationRequired}: ${jobData.location || ''}`.trim(),
+          link,
+          jobId: snap.id,
+        },
+        webpush: { fcmOptions: { link } }
+      }
+
+      const chunkSize = 500
+      let totalSuccess = 0
+      let totalFailure = 0
+      const invalidCodes = new Set([
+        'messaging/registration-token-not-registered',
+        'messaging/invalid-registration-token'
+      ])
+      const toDeletePaths: string[] = []
+      for (let i = 0; i < tokenRefs.length; i += chunkSize) {
+        const chunk = tokenRefs.slice(i, i + chunkSize)
+        const tokens = chunk.map((c) => c.token)
+        const res = await getMessaging().sendEachForMulticast({ tokens, ...(messageBase as any) })
+        totalSuccess += res.successCount
+        totalFailure += res.failureCount
+        if (res.failureCount > 0) {
+          res.responses.forEach((r, idx) => {
+            if (!r.success) {
+              const token = tokens[idx]
+              const tokenSuffix = token ? token.slice(-8) : 'unknown'
+              const code = (r.error as any)?.code
+              const message = r.error?.message
+              logger.error('notifyTradespeople: send failure', { idx, code, message, tokenSuffix, jobId: snap.id })
+              if (r.error && invalidCodes.has(code)) toDeletePaths.push(chunk[idx].refPath)
+            }
+          })
         }
-        logger.info(`Notifikacija bi bila poslata majstoru: ${doc.id}`)
-      })
+      }
+      logger.info('notifyTradespeople: push results', { success: totalSuccess, failure: totalFailure })
+
+      if (toDeletePaths.length) {
+        const batch = db.batch()
+        toDeletePaths.forEach((p) => batch.delete(db.doc(p)))
+        await batch.commit()
+        logger.info('notifyTradespeople: cleaned invalid tokens', { count: toDeletePaths.length })
+      }
     } catch (err: any) {
       logger.error('notifyTradespeople: query failed', { message: err?.message })
     }
