@@ -17,6 +17,20 @@ export default defineNuxtConfig({
     '@nuxtjs/tailwindcss',
     '@pinia/nuxt'
   ],
+  app: {
+    head: {
+      link: [
+        { rel: 'manifest', href: '/manifest.webmanifest' },
+        { rel: 'icon', href: '/icons/icon-192.png', type: 'image/png', sizes: '192x192' },
+        { rel: 'apple-touch-icon', href: '/icons/apple-touch-icon-180.png', sizes: '180x180' }
+      ],
+      meta: [
+        { name: 'theme-color', content: '#0ea5e9' },
+        { name: 'apple-mobile-web-app-capable', content: 'yes' },
+        { name: 'apple-mobile-web-app-status-bar-style', content: 'default' }
+      ]
+    }
+  },
   runtimeConfig: {
     public: {
       firebase: {
