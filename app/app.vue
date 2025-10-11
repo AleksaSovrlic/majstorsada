@@ -6,7 +6,12 @@
         <ClientOnly>
           <template #default>
             <div>
-              <NuxtLink v-if="isLoggedIn" to="/klijent/dashboard" class="text-sm px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 active:scale-[0.99]">Moj Panel</NuxtLink>
+              <template v-if="isLoggedIn">
+                <NuxtLink v-if="role === 'tradesperson'" to="/majstor/dashboard" class="text-sm px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 active:scale-[0.99]">Moj Panel</NuxtLink>
+                <NuxtLink v-else-if="role === 'client'" to="/klijent/dashboard" class="text-sm px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 active:scale-[0.99]">Moj Panel</NuxtLink>
+                <NuxtLink v-else-if="role === 'admin'" to="/admin/dashboard" class="text-sm px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 active:scale-[0.99]">Admin</NuxtLink>
+                <div v-else class="w-28 h-8 rounded-md bg-gray-200" />
+              </template>
               <NuxtLink v-else to="/login?from=klijent/dashboard" class="text-sm px-3 py-2 rounded-md bg-gray-900 text-white hover:bg-black active:scale-[0.99]">Prijava</NuxtLink>
             </div>
           </template>
@@ -33,4 +38,5 @@ const auth = useAuthStore()
 const showNav = computed(() => !route.path.startsWith('/admin') && !route.path.startsWith('/majstor'))
 const authReady = computed(() => auth.isInitialized)
 const isLoggedIn = computed(() => !!auth.currentUser)
+const role = computed(() => auth.role)
 </script>

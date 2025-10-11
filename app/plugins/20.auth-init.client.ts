@@ -7,6 +7,7 @@ export default defineNuxtPlugin({
   async setup() {
     const authStore = useAuthStore()
     await authStore.ensureAuthReady()
+    await authStore.resolveUserRole().catch(() => {})
   }
 })
 
