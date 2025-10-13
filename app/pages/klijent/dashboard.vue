@@ -17,6 +17,25 @@
         <div v-for="j in accepted" :key="j.jobId" class="bg-white rounded-xl shadow p-4">
           <div class="font-medium text-gray-900">{{ j.problemDescription }}</div>
           <div class="text-sm text-gray-600">{{ j.location }} · {{ j.specializationRequired }}</div>
+          <div v-if="j.acceptedByTradespersonProfile" class="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
+            <div>
+              <div class="text-gray-500">Majstor</div>
+              <div class="text-gray-900">{{ j.acceptedByTradespersonProfile.displayName || 'Nepoznato' }}</div>
+            </div>
+            <div>
+              <div class="text-gray-500">Ocena</div>
+              <div class="text-gray-900">
+                <span v-if="(j.acceptedByTradespersonProfile.averageRating || 0) > 0">
+                  {{ j.acceptedByTradespersonProfile.averageRating }} ★ ({{ j.acceptedByTradespersonProfile.ratingCount || 0 }})
+                </span>
+                <span v-else>Još nema ocena</span>
+              </div>
+            </div>
+            <div>
+              <div class="text-gray-500">Telefon</div>
+              <div class="text-gray-900">{{ j.acceptedByTradespersonProfile.phoneNumber || '—' }}</div>
+            </div>
+          </div>
         </div>
         <div v-if="accepted.length === 0" class="text-sm text-gray-500">Nema prihvaćenih poslova.</div>
       </div>

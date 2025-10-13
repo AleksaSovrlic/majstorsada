@@ -143,7 +143,13 @@ exports.acceptJob = (0, https_1.onRequest)({ region: 'europe-west3' }, (req, res
                 tx.update(jobRef, {
                     status: 'accepted',
                     acceptedByTradespersonId: auth.uid,
-                    acceptedAt: firestore_1.FieldValue.serverTimestamp()
+                    acceptedAt: firestore_1.FieldValue.serverTimestamp(),
+                    acceptedByTradespersonProfile: {
+                        displayName: (tp.displayName || '').toString(),
+                        phoneNumber: (tp.phoneNumber || '').toString(),
+                        averageRating: Number(tp.averageRating ?? 0),
+                        ratingCount: Number(tp.ratingCount ?? 0)
+                    }
                 });
                 tx.update(tradespersonRef, {
                     balanceTokens: firestore_1.FieldValue.increment(-1)
