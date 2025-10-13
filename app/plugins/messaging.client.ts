@@ -31,12 +31,20 @@ export default defineNuxtPlugin(async () => {
     getAndSaveInFlight = (async () => {
       // kratka pauza ako je SW sveže instaliran
       try { await navigator.serviceWorker.ready } catch {}
-      const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: swReg! })
-      if (!token) return null
       const { useAuthStore } = await import('@/stores/auth')
       const auth = useAuthStore()
       await auth.ensureAuthReady()
+      // Role guard: samo majstori registruju i snimaju FCM token pod tradespeople/
       if (!auth.currentUser) return null
+      if (auth.role === 'unknown') {
+        try { await auth.resolveUserRole() } catch {}
+      }
+      if (auth.role !== 'tradesperson') {
+        return null
+      }
+
+      const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: swReg! })
+      if (!token) return null
       const uid = auth.currentUser.uid
       const tokenId = btoa(token).replace(/\+/g, '-').replace(/\//g, '_')
       const { doc, setDoc, serverTimestamp, collection, query, where, getDocs, deleteDoc } = await import('firebase/firestore')
@@ -81,7 +89,7 @@ export default defineNuxtPlugin(async () => {
     const { useAuthStore } = await import('@/stores/auth')
     const auth = useAuthStore()
     await auth.ensureAuthReady()
-    if (auth.currentUser && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    if (auth.currentUser && auth.role === 'tradesperson' && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
       await getAndSaveFcmToken()
     }
   } catch (e) {
