@@ -28,7 +28,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
@@ -39,4 +39,19 @@ const showNav = computed(() => !route.path.startsWith('/admin') && !route.path.s
 const authReady = computed(() => auth.isInitialized)
 const isLoggedIn = computed(() => !!auth.currentUser)
 const role = computed(() => auth.role)
+
+// Ensure role is resolved after Magic Link or new tab load, to keep header reactive
+onMounted(async () => {
+  if (typeof window === 'undefined') return
+  if (auth.currentUser && auth.role === 'unknown') {
+    try { await auth.resolveUserRole() } catch {}
+  }
+})
+
+watch(() => auth.currentUser?.uid, async () => {
+  if (typeof window === 'undefined') return
+  if (auth.currentUser && auth.role === 'unknown') {
+    try { await auth.resolveUserRole() } catch {}
+  }
+})
 </script>
