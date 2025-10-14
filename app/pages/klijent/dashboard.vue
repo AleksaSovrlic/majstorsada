@@ -1,22 +1,22 @@
 <template>
   <div class="space-y-8">
     <section>
-      <h2 class="text-lg font-semibold text-gray-900">Na čekanju</h2>
+      <h2 class="text-xl font-bold text-gray-900">Na čekanju</h2>
       <div class="mt-3 space-y-3">
-        <div v-for="j in pending" :key="j.jobId" class="bg-white rounded-xl shadow p-4">
-          <div class="font-medium text-gray-900">{{ j.problemDescription }}</div>
-          <div class="text-sm text-gray-600">{{ j.location }} · {{ j.specializationRequired }}</div>
+        <div v-for="j in pending" :key="j.jobId" class="bg-white rounded-xl shadow p-6">
+          <div class="text-lg font-semibold text-gray-900">{{ j.problemDescription }}</div>
+          <div class="text-sm text-gray-600 mt-1">{{ j.location }} · {{ j.specializationRequired }}</div>
         </div>
         <div v-if="pending.length === 0" class="text-sm text-gray-500">Nema poslova na čekanju.</div>
       </div>
     </section>
 
     <section>
-      <h2 class="text-lg font-semibold text-gray-900">Prihvaćeni</h2>
+      <h2 class="text-xl font-bold text-gray-900">Prihvaćeni</h2>
       <div class="mt-3 space-y-3">
-        <div v-for="j in accepted" :key="j.jobId" class="bg-white rounded-xl shadow p-4">
-          <div class="font-medium text-gray-900">{{ j.problemDescription }}</div>
-          <div class="text-sm text-gray-600">{{ j.location }} · {{ j.specializationRequired }}</div>
+        <div v-for="j in accepted" :key="j.jobId" class="bg-white rounded-xl shadow p-6">
+          <div class="text-lg font-semibold text-gray-900">{{ j.problemDescription }}</div>
+          <div class="text-sm text-gray-600 mt-1">{{ j.location }} · {{ j.specializationRequired }}</div>
           <div v-if="j.acceptedByTradespersonProfile" class="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
             <div>
               <div class="text-gray-500">Majstor</div>
@@ -42,13 +42,13 @@
     </section>
 
     <section>
-      <h2 class="text-lg font-semibold text-gray-900">Završeni</h2>
+      <h2 class="text-xl font-bold text-gray-900">Završeni</h2>
       <div class="mt-3 space-y-3">
-        <div v-for="j in completed" :key="j.jobId" class="bg-white rounded-xl shadow p-4">
-          <div class="font-medium text-gray-900">{{ j.problemDescription }}</div>
-          <div class="text-sm text-gray-600">{{ j.location }} · {{ j.specializationRequired }}</div>
-          <div class="pt-2 flex items-center gap-2">
-            <button v-if="!j.rating" class="px-4 py-2 rounded-md bg-blue-600 text-white font-medium hover:bg-blue-700 active:scale-[0.99]" @click="openRating(j)">Oceni</button>
+        <div v-for="j in completed" :key="j.jobId" class="bg-white rounded-xl shadow p-6">
+          <div class="text-lg font-semibold text-gray-900">{{ j.problemDescription }}</div>
+          <div class="text-sm text-gray-600 mt-1">{{ j.location }} · {{ j.specializationRequired }}</div>
+          <div class="pt-3 flex items-center gap-2">
+            <button v-if="!j.rating" class="px-4 py-2 rounded-lg bg-blue-600 text-white shadow-sm hover:bg-blue-700 active:scale-[0.99]" @click="openRating(j)">Oceni</button>
             <div v-else class="text-sm text-gray-800">Ocena: {{ j.rating }} ★</div>
           </div>
         </div>

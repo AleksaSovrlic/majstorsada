@@ -1,9 +1,9 @@
 <template>
   <div class="space-y-6">
-    <h2 class="text-xl font-semibold">Svi Majstori</h2>
-    <div class="overflow-x-auto bg-white border rounded-lg">
+    <h2 class="text-xl font-bold text-gray-900">Svi Majstori</h2>
+    <div class="overflow-x-auto bg-white rounded-xl shadow">
       <table class="min-w-full text-sm">
-        <thead class="bg-gray-50">
+        <thead class="bg-slate-50">
           <tr>
             <th class="text-left p-3 font-medium text-gray-700">Ime</th>
             <th class="text-left p-3 font-medium text-gray-700">Email</th>
@@ -30,10 +30,10 @@
     </div>
   </div>
   <div class="space-y-6 mt-8">
-    <h2 class="text-xl font-semibold">Svi Klijenti</h2>
-    <div class="overflow-x-auto bg-white border rounded-lg">
+    <h2 class="text-xl font-bold text-gray-900">Svi Klijenti</h2>
+    <div class="overflow-x-auto bg-white rounded-xl shadow">
       <table class="min-w-full text-sm">
-        <thead class="bg-gray-50">
+        <thead class="bg-slate-50">
           <tr>
             <th class="text-left p-3 font-medium text-gray-700">Email</th>
             <th class="text-left p-3 font-medium text-gray-700">Kreiran</th>

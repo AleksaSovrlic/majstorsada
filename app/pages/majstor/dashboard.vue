@@ -3,15 +3,31 @@
     <ClientOnly>
       <NotificationsBanner />
     </ClientOnly>
-    <AvailabilityToggle />
-    <TokenBalance />
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="bg-white rounded-xl shadow p-6">
+        <div class="flex items-center justify-between">
+          <h3 class="text-lg font-semibold text-gray-900">Dostupnost</h3>
+        </div>
+        <div class="mt-3">
+          <AvailabilityToggle />
+        </div>
+      </div>
+      <div class="bg-white rounded-xl shadow p-6">
+        <div class="flex items-center justify-between">
+          <h3 class="text-lg font-semibold text-gray-900">Žetoni</h3>
+        </div>
+        <div class="mt-3">
+          <TokenBalance />
+        </div>
+      </div>
+    </div>
 
     <div class="bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-lg p-3">
       Potrebno Vam je još žetona? Kontaktirajte administratora na broj: 06X/XXX-XXXX
     </div>
 
     <section>
-      <h2 class="text-lg font-semibold text-gray-900">Novi poslovi</h2>
+      <h2 class="text-xl font-bold text-gray-900">Novi poslovi</h2>
       <div class="pt-2 space-y-3">
         <NewJobCard v-for="j in newJobs" :key="j.jobId" :job="j" @dismiss="onDismiss(j.jobId)" @accepted="onAccepted" />
         <div v-if="newJobs.length === 0" class="text-sm text-gray-500 text-center py-6">Nema novih poslova trenutno.</div>
@@ -19,14 +35,14 @@
     </section>
 
     <section>
-      <h2 class="text-lg font-semibold text-gray-900">Aktivni poslovi</h2>
+      <h2 class="text-xl font-bold text-gray-900">Aktivni poslovi</h2>
       <div class="pt-2 space-y-3">
-        <div v-for="j in activeJobs" :key="j.jobId" class="bg-white rounded-xl shadow p-4 space-y-2">
-          <div class="text-base font-semibold text-gray-900">{{ j.problemDescription }}</div>
+        <div v-for="j in activeJobs" :key="j.jobId" class="bg-white rounded-xl shadow p-6 space-y-2">
+          <div class="text-lg font-semibold text-gray-900">{{ j.problemDescription }}</div>
           <div class="text-sm text-gray-600">{{ j.location }} · {{ j.specializationRequired }}</div>
           <div class="text-sm text-gray-800 mt-1">Kontakt: {{ j.contactPhone }}</div>
           <div class="pt-2 flex items-center gap-2">
-            <button class="px-4 py-2 rounded-md bg-blue-600 text-white font-medium hover:bg-blue-700 active:scale-[0.99]" :disabled="finishingJobIds.has(j.jobId)" @click="onFinish(j.jobId)">
+            <button class="px-4 py-2 rounded-lg bg-blue-600 text-white font-medium shadow-sm hover:bg-blue-700 active:scale-[0.99]" :disabled="finishingJobIds.has(j.jobId)" @click="onFinish(j.jobId)">
               {{ finishingJobIds.has(j.jobId) ? 'Završavanje...' : 'Završi Posao' }}
             </button>
           </div>
@@ -36,10 +52,10 @@
     </section>
 
     <section>
-      <h2 class="text-lg font-semibold text-gray-900">Završeni poslovi</h2>
+      <h2 class="text-xl font-bold text-gray-900">Završeni poslovi</h2>
       <div class="pt-2 space-y-3">
-        <div v-for="j in completedJobs" :key="j.jobId" class="bg-white rounded-xl shadow p-4 space-y-2">
-          <div class="text-base font-semibold text-gray-900">{{ j.problemDescription }}</div>
+        <div v-for="j in completedJobs" :key="j.jobId" class="bg-white rounded-xl shadow p-6 space-y-2">
+          <div class="text-lg font-semibold text-gray-900">{{ j.problemDescription }}</div>
           <div class="text-sm text-gray-600">{{ j.location }} · {{ j.specializationRequired }}</div>
         </div>
         <div v-if="completedJobs.length === 0" class="text-sm text-gray-500 text-center py-6">Nema završenih poslova.</div>
