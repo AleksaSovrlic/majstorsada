@@ -45,7 +45,7 @@ const isLoggedIn = computed(() => !!auth.currentUser)
 const CtaButton = defineComponent({
   setup() {
     return () => {
-      const to = auth.currentUser ? '/zahtev' : '/login?from=cta'
+      const to = auth.currentUser ? '/zahtev' : '/login?from=/zahtev'
       return h(
         resolveComponent('NuxtLink'),
         {
