@@ -7,7 +7,7 @@ let messaging = null
 try {
   if (!firebase.apps || firebase.apps.length === 0) {
     // IMPORTANT: senderId iz istog projekta kao frontend i Admin SDK
-    firebase.initializeApp({ messagingSenderId: '41940311094' })
+    firebase.initializeApp({ messagingSenderId: '526260795061' })
   }
   messaging = firebase.messaging()
 } catch (e) {

@@ -38,7 +38,7 @@ export default defineNuxtConfig({
         authDomain: process.env.NUXT_PUBLIC_FIREBASE_AUTH_DOMAIN || 'localhost',
         projectId: process.env.NUXT_PUBLIC_FIREBASE_PROJECT_ID || 'majstorsada-18a99',
         appId: process.env.NUXT_PUBLIC_FIREBASE_APP_ID || 'demo-app-id',
-        messagingSenderId: process.env.NUXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || 'demo-sender-id',
+        messagingSenderId: process.env.NUXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || '526260795061',
         storageBucket: process.env.NUXT_PUBLIC_FIREBASE_STORAGE_BUCKET || 'demo-bucket',
         measurementId: process.env.NUXT_PUBLIC_FIREBASE_MEASUREMENT_ID || 'G-DEMO123',
         functionsRegion: process.env.NUXT_PUBLIC_FIREBASE_FUNCTIONS_REGION || 'europe-west3'
