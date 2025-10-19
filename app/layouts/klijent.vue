@@ -2,7 +2,18 @@
   <div class="min-h-screen">
     <header class="sticky top-0 z-10 bg-white border-b border-gray-200">
       <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
-        <NuxtLink to="/" class="text-lg font-semibold text-gray-900">MajstorSada</NuxtLink>
+        <NuxtLink to="/" class="inline-flex items-center" aria-label="MajstorSada">
+          <img
+            src="/logo/logo-32.png"
+            srcset="/logo/logo-32.png 1x, /logo/logo-64.png 2x, /logo/logo-96.png 3x"
+            alt="MajstorSada"
+            class="h-8 w-auto"
+            width="32" height="32"
+            decoding="async"
+            fetchpriority="high"
+            @error="onLogoError"
+          />
+        </NuxtLink>
         <div class="flex items-center gap-2">
           <NuxtLink
             to="/zahtev"
@@ -31,6 +42,14 @@ const router = useRouter()
 async function onSignOut() {
   await auth.signOut()
   router.push('/')
+}
+
+function onLogoError(e: Event) {
+  const img = e.target as HTMLImageElement
+  if (!img) return
+  img.onerror = null
+  img.src = '/icons/icon-192.png'
+  img.srcset = '/icons/icon-192.png 1x, /icons/icon-192.png 2x, /icons/icon-512.png 3x'
 }
 </script>
 
