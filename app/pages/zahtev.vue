@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen bg-gray-50 flex items-start justify-center px-4 py-8">
+  <div class="min-h-screen flex items-start justify-center px-4 py-8">
     <div class="w-full max-w-xl bg-white rounded-xl shadow p-6">
       <h1 class="text-2xl font-semibold text-gray-900 text-center">Novi zahtev</h1>
       <p class="text-gray-600 text-center mt-1">Opišite problem i pošaljite zahtev majstorima.</p>
@@ -7,7 +7,7 @@
       <form class="mt-6 space-y-5" @submit.prevent="submit">
         <div>
           <label class="block text-sm text-gray-700 mb-1">Vaš e-mail</label>
-          <input :value="userEmail" type="email" readonly class="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-700" />
+          <input :value="userEmail" type="email" readonly class="w-full rounded-md border border-gray-200 bg-white/60 backdrop-blur-sm px-3 py-2 text-gray-700" />
         </div>
         <div>
           <label class="block text-sm text-gray-700 mb-1">Potreban mi je:</label>

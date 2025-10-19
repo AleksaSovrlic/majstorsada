@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+  <div class="min-h-screen flex items-center justify-center px-4">
     <div class="w-full max-w-sm bg-white border rounded-lg p-6 shadow-sm">
       <h2 class="text-center text-xl font-semibold mb-4">Admin Prijava</h2>
       <form @submit.prevent="onSubmit" class="space-y-3">

@@ -3,7 +3,7 @@
     <h2 class="text-xl font-bold text-gray-900">Svi Majstori</h2>
     <div class="overflow-x-auto bg-white rounded-xl shadow">
       <table class="min-w-full text-sm">
-        <thead class="bg-slate-50">
+        <thead class="bg-white">
           <tr>
             <th class="text-left p-3 font-medium text-gray-700">Ime</th>
             <th class="text-left p-3 font-medium text-gray-700">Email</th>
@@ -33,7 +33,7 @@
     <h2 class="text-xl font-bold text-gray-900">Svi Klijenti</h2>
     <div class="overflow-x-auto bg-white rounded-xl shadow">
       <table class="min-w-full text-sm">
-        <thead class="bg-slate-50">
+        <thead class="bg-white">
           <tr>
             <th class="text-left p-3 font-medium text-gray-700">Email</th>
             <th class="text-left p-3 font-medium text-gray-700">Kreiran</th>

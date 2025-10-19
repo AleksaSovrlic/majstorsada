@@ -16,7 +16,7 @@
       <h3 class="text-md font-semibold mb-3">Istorija poslova</h3>
       <div class="overflow-x-auto">
         <table class="min-w-full text-sm">
-          <thead class="bg-gray-50">
+          <thead class="bg-white">
             <tr>
               <th class="text-left p-3 font-medium text-gray-700">Datum</th>
               <th class="text-left p-3 font-medium text-gray-700">Status</th>

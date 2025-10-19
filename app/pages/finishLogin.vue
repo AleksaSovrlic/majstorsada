@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen bg-gray-50 flex items-start justify-center px-4 py-8">
+  <div class="min-h-screen flex items-start justify-center px-4 py-8">
     <div class="w-full max-w-md bg-white rounded-xl shadow p-6">
       <h1 class="text-2xl font-semibold text-gray-900 text-center">Dovršetak prijave</h1>
       <p class="text-gray-600 text-center mt-1">Proveravamo Magic Link...</p>

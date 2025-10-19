@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen bg-gradient-to-b from-slate-50 via-blue-50 to-blue-100 flex items-center justify-center px-4">
+  <div class="min-h-screen flex items-center justify-center px-4">
     <div class="w-full max-w-2xl text-center">
       <h1 class="text-4xl md:text-5xl font-extrabold text-gray-900 tracking-tight">
         <span class="block">Treba vam majstor?</span>
