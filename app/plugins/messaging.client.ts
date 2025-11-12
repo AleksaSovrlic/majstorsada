@@ -1,104 +1,115 @@
 import { getMessaging, getToken, isSupported, onMessage } from 'firebase/messaging'
 
-export default defineNuxtPlugin(async () => {
-  if (!('serviceWorker' in navigator)) return
-  const supported = await isSupported().catch(() => false)
-  if (!supported) return
+export default defineNuxtPlugin({
+  name: 'messaging',
+  dependsOn: ['firebase'],
+  enforce: 'post',
+  async setup(nuxt) {
+    const fallbackProvide = {
+      provide: {
+        fcm: {
+          requestPermission: async () => 'denied' as NotificationPermission,
+          getAndSaveFcmToken: async () => null as string | null
+        }
+      }
+    }
 
-  const nuxt = useNuxtApp()
-  const runtime = useRuntimeConfig()
-  const vapidKey = runtime.public.firebase.vapidKey || ''
-  let getAndSaveInFlight: Promise<string | null> | null = null
+    if (!('serviceWorker' in navigator)) return fallbackProvide
+    const supported = await isSupported().catch(() => false)
+    if (!supported) return fallbackProvide
 
-  // Register SW at root scope (protect with try/catch to avoid 500 if SW script fails)
-  let swReg: ServiceWorkerRegistration | null = null
-  try {
-    swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/' })
-  } catch (e) {
-    console.warn('[messaging] SW registration failed', e)
-    return
-  }
+    const runtime = useRuntimeConfig()
+    const vapidKey = ((runtime.public as any).firebaseVapidKey as string) || ''
+    let getAndSaveInFlight: Promise<string | null> | null = null
 
-  const messaging = getMessaging(nuxt.$firebaseApp)
+    // Register SW at root scope (protect with try/catch to avoid 500 if SW script fails)
+    let swReg: ServiceWorkerRegistration | null = null
+    try {
+      swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/' })
+    } catch (e) {
+      console.warn('[messaging] SW registration failed', e)
+      return fallbackProvide
+    }
 
-  const requestPermission = async (): Promise<NotificationPermission> => {
-    if (!('Notification' in window)) return 'denied'
-    return await Notification.requestPermission()
-  }
+    const messaging = getMessaging((nuxt as any).$firebaseApp)
 
-  const getAndSaveFcmToken = async (): Promise<string | null> => {
-    if (getAndSaveInFlight) return getAndSaveInFlight
-    getAndSaveInFlight = (async () => {
-      // kratka pauza ako je SW sveže instaliran
-      try { await navigator.serviceWorker.ready } catch {}
+    const requestPermission = async (): Promise<NotificationPermission> => {
+      if (!('Notification' in window)) return 'denied'
+      return await Notification.requestPermission()
+    }
+
+    const getAndSaveFcmToken = async (): Promise<string | null> => {
+      if (getAndSaveInFlight) return getAndSaveInFlight
+      getAndSaveInFlight = (async () => {
+        try { await navigator.serviceWorker.ready } catch {}
+        const { useAuthStore } = await import('@/stores/auth')
+        const auth = useAuthStore()
+        await auth.ensureAuthReady()
+        if (!auth.currentUser) return null
+        if (auth.role === 'unknown') {
+          try { await auth.resolveUserRole() } catch {}
+        }
+        if (auth.role !== 'tradesperson') {
+          return null
+        }
+
+        const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: swReg! })
+        if (!token) return null
+        const uid = auth.currentUser.uid
+        const tokenId = btoa(token).replace(/\+/g, '-').replace(/\//g, '_')
+        const { doc, setDoc, serverTimestamp, collection, query, where, getDocs, deleteDoc } = await import('firebase/firestore')
+        const firestore = (nuxt as any).$firestore
+        await setDoc(doc(firestore, 'tradespeople', uid, 'fcmTokens', tokenId), {
+          token,
+          platform: 'web',
+          userAgent: navigator.userAgent,
+          origin: location.origin,
+          createdAt: serverTimestamp(),
+          lastSeenAt: serverTimestamp()
+        }, { merge: true })
+        // Dedupe: obriši stare tokene za isti uređaj (origin + userAgent)
+        try {
+          const colRef = collection(firestore, 'tradespeople', uid, 'fcmTokens')
+          const q = query(colRef, where('origin', '==', location.origin))
+          const snap = await getDocs(q)
+          for (const d of snap.docs) {
+            const data = d.data() as any
+            if (d.id !== tokenId && data?.userAgent === navigator.userAgent) {
+              await deleteDoc(d.ref)
+            }
+          }
+        } catch (e) {
+          console.warn('[messaging] dedupe tokens skipped', e)
+        }
+        return token
+      })()
+      try {
+        return await getAndSaveInFlight
+      } finally {
+        getAndSaveInFlight = null
+      }
+    }
+
+    onMessage(messaging, (payload) => {
+      console.log('[messaging] foreground message', payload)
+    })
+
+    // Proaktivna registracija: čim je korisnik prijavljen i dozvola granted
+    try {
       const { useAuthStore } = await import('@/stores/auth')
       const auth = useAuthStore()
       await auth.ensureAuthReady()
-      // Role guard: samo majstori registruju i snimaju FCM token pod tradespeople/
-      if (!auth.currentUser) return null
-      if (auth.role === 'unknown') {
-        try { await auth.resolveUserRole() } catch {}
+      if (auth.currentUser && auth.role === 'tradesperson' && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        await getAndSaveFcmToken()
       }
-      if (auth.role !== 'tradesperson') {
-        return null
-      }
-
-      const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: swReg! })
-      if (!token) return null
-      const uid = auth.currentUser.uid
-      const tokenId = btoa(token).replace(/\+/g, '-').replace(/\//g, '_')
-      const { doc, setDoc, serverTimestamp, collection, query, where, getDocs, deleteDoc } = await import('firebase/firestore')
-      const { $firestore } = nuxt
-      await setDoc(doc($firestore, 'tradespeople', uid, 'fcmTokens', tokenId), {
-        token,
-        platform: 'web',
-        userAgent: navigator.userAgent,
-        origin: location.origin,
-        createdAt: serverTimestamp(),
-        lastSeenAt: serverTimestamp()
-      }, { merge: true })
-      // Dedupe: obriši stare tokene za isti uređaj (origin + userAgent)
-      try {
-        const colRef = collection($firestore, 'tradespeople', uid, 'fcmTokens')
-        const q = query(colRef, where('origin', '==', location.origin))
-        const snap = await getDocs(q)
-        for (const d of snap.docs) {
-          const data = d.data() as any
-          if (d.id !== tokenId && data?.userAgent === navigator.userAgent) {
-            await deleteDoc(d.ref)
-          }
-        }
-      } catch (e) {
-        console.warn('[messaging] dedupe tokens skipped', e)
-      }
-      return token
-    })()
-    try {
-      return await getAndSaveInFlight
-    } finally {
-      getAndSaveInFlight = null
+    } catch (e) {
+      console.warn('[messaging] proactive token sync skipped', e)
     }
-  }
 
-  onMessage(messaging, (payload) => {
-    console.log('[messaging] foreground message', payload)
-  })
-
-  // Proaktivna registracija: čim je korisnik prijavljen i dozvola granted
-  try {
-    const { useAuthStore } = await import('@/stores/auth')
-    const auth = useAuthStore()
-    await auth.ensureAuthReady()
-    if (auth.currentUser && auth.role === 'tradesperson' && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-      await getAndSaveFcmToken()
-    }
-  } catch (e) {
-    console.warn('[messaging] proactive token sync skipped', e)
-  }
-
-  return {
-    provide: {
-      fcm: { requestPermission, getAndSaveFcmToken }
+    return {
+      provide: {
+        fcm: { requestPermission, getAndSaveFcmToken }
+      }
     }
   }
 })

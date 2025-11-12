@@ -81,10 +81,18 @@ exports.health = (0, https_1.onRequest)({ region: 'europe-west3' }, (req, res) =
 });
 const corsHandler = (0, cors_1.default)({
     origin: (origin, callback) => {
-        if (!origin)
-            return callback(null, true);
-        const allowed = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
-        callback(null, allowed);
+        try {
+            if (!origin)
+                return callback(null, true);
+            const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin);
+            const isFirebaseHosting = /^https:\/\/[a-z0-9-]+\.web\.app$/i.test(origin) || /^https:\/\/[a-z0-9-]+\.firebaseapp\.com$/i.test(origin);
+            const whitelisted = (process.env.WEB_APP_ORIGIN && origin === process.env.WEB_APP_ORIGIN);
+            const allowed = isLocal || isFirebaseHosting || !!whitelisted;
+            callback(null, allowed);
+        }
+        catch {
+            callback(null, false);
+        }
     },
     methods: ['POST', 'OPTIONS'],
     allowedHeaders: ['Authorization', 'Content-Type'],

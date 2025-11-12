@@ -6,7 +6,9 @@ process.env.FIRESTORE_EMULATOR_HOST = "127.0.0.1:8180";
 
 import admin from 'firebase-admin'
 
-const projectId = 'majstorsada-18a99'
+const projectId = process.env.FIREBASE_PROJECT_ID
+  || process.env.NUXT_PUBLIC_FIREBASE_PROJECT_ID
+  || 'majstorsada-b2ad4'
 
 if (admin.apps.length === 0) {
   admin.initializeApp({ projectId })
@@ -42,7 +44,7 @@ async function main() {
     displayName: DISPLAY_NAME,
     email: AUTH_EMAIL,
     specialization: SPECIALIZATION,
-    status: 'nedostupan',
+    status: 'unavailable',
     balanceTokens: 5
   }, { merge: true })
   console.log(`Upserted tradesperson profile for ${user.uid} (status: nedostupan)`) 

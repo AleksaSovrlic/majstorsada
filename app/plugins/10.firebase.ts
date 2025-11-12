@@ -11,7 +11,7 @@ export default defineNuxtPlugin({
     const firebaseConfig = {
       apiKey: config.public.firebase.apiKey,
       authDomain: config.public.firebase.authDomain,
-      projectId: config.public.firebase.projectId || 'majstorsada-18a99',
+      projectId: config.public.firebase.projectId || 'majstorsada-b2ad4',
       storageBucket: config.public.firebase.storageBucket,
       messagingSenderId: config.public.firebase.messagingSenderId,
       appId: config.public.firebase.appId,

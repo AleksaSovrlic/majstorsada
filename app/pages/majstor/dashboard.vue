@@ -216,7 +216,7 @@ async function onFinish(jobId: string) {
     if (!idToken) throw new Error('Niste prijavljeni.')
 
     const config = useRuntimeConfig()
-    const projectId = config.public.firebase.projectId || 'majstorsada-18a99'
+    const projectId = config.public.firebase.projectId || 'majstorsada-b2ad4'
     const region = config.public.firebase.functionsRegion || 'europe-west3'
     const base = process.env.NODE_ENV === 'development'
       ? `http://localhost:5501/${projectId}/${region}`
