@@ -5,7 +5,7 @@
   "scripts": {
     "build": "nuxt build",
     "dev": "nuxt dev --port 3333",
-    "deploy:prod": "npm run build && npm --prefix .output/server install --omit=dev && firebase deploy --only firestore,functions,hosting --project majstorsada-b2ad4",
+    "deploy:prod": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"npm run build; cd .output/server; npm install --package-lock-only --package-lock=true; cd ../..; firebase deploy --only firestore,functions,hosting --project majstorsada-b2ad4\"",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare"
