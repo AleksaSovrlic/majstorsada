@@ -11,7 +11,8 @@ export default defineNuxtConfig({
     '@': join(__dirname, 'app')
   },
   compatibilityDate: '2025-07-15',
-  devtools: { enabled: true },
+  // Production safety: disable Nuxt DevTools in prod builds
+  devtools: { enabled: false },
   css: ['~/assets/css/tailwind.css'],
   modules: [
     '@nuxtjs/tailwindcss',
@@ -24,6 +25,10 @@ export default defineNuxtConfig({
       httpsOptions: {
         region: 'europe-west3'
       }
+    },
+    // Firebase Gen2 (Cloud Run) runtime safety: bundle these to avoid module-resolution crashes
+    externals: {
+      inline: ['pinia', '@vue/devtools-api']
     }
   },
   app: {
