@@ -1,6 +1,7 @@
 import { HttpsError, onRequest } from 'firebase-functions/v2/https'
+import * as functions from 'firebase-functions/v1'
 import { onDocumentCreated } from 'firebase-functions/v2/firestore'
-import { region } from 'firebase-functions'
+// OBBRISANA LINIJA: import { region } from 'firebase-functions' <-- OVO JE PRAVILO PROBLEM
 import * as logger from 'firebase-functions/logger'
 import { initializeApp, cert, applicationDefault } from 'firebase-admin/app'
 import { FieldValue, getFirestore } from 'firebase-admin/firestore'
@@ -345,7 +346,7 @@ export const updateTokensByAdmin = onRequest({ region: 'europe-west3' }, (req, r
   })
 })
 
-export const notifyTradespeople = region('europe-west3')
+export const notifyTradespeople = functions.region('europe-west3')
   .firestore
   .document('jobs/{jobId}')
   .onCreate(async (snap, context) => {

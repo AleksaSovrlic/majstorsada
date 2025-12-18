@@ -17,6 +17,15 @@ export default defineNuxtConfig({
     '@nuxtjs/tailwindcss',
     '@pinia/nuxt'
   ],
+  nitro: {
+    preset: 'firebase',
+    firebase: {
+      gen: 2,
+      httpsOptions: {
+        region: 'europe-west3'
+      }
+    }
+  },
   app: {
     head: {
       link: [

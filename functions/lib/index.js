@@ -38,7 +38,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.notifyTradespeople = exports.updateTokensByAdmin = exports.buyTokens = exports.markJobAsComplete = exports.submitJobRating = exports.acceptJob = exports.health = void 0;
 const https_1 = require("firebase-functions/v2/https");
-const firebase_functions_1 = require("firebase-functions");
+const functions = __importStar(require("firebase-functions/v1"));
+// OBBRISANA LINIJA: import { region } from 'firebase-functions' <-- OVO JE PRAVILO PROBLEM
 const logger = __importStar(require("firebase-functions/logger"));
 const app_1 = require("firebase-admin/app");
 const firestore_1 = require("firebase-admin/firestore");
@@ -380,7 +381,7 @@ exports.updateTokensByAdmin = (0, https_1.onRequest)({ region: 'europe-west3' },
         }
     });
 });
-exports.notifyTradespeople = (0, firebase_functions_1.region)('europe-west3')
+exports.notifyTradespeople = functions.region('europe-west3')
     .firestore
     .document('jobs/{jobId}')
     .onCreate(async (snap, context) => {
