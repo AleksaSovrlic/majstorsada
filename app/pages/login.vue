@@ -67,9 +67,16 @@ async function sendLink() {
   sending.value = true
   try {
     const { $firebaseAuth } = useNuxtApp()
-    const origin = window.location.origin
     const from = (route.query.from as string) || '/zahtev'
     sessionStorage.setItem('postAuthRedirect', from)
+
+    // Canonical continueUrl:
+    // - dev: current origin (localhost)
+    // - prod: always branded domain (prevents *.web.app links that won't match the installed PWA origin)
+    const runtime = useRuntimeConfig()
+    const brandedOriginRaw = ((runtime.public as any).siteUrl as string) || 'https://majstorsada.rs'
+    const brandedOrigin = brandedOriginRaw.replace(/\/+$/, '')
+    const origin = import.meta.dev ? window.location.origin : brandedOrigin
 
     const actionCodeSettings = {
       url: `${origin}/finishLogin?from=${encodeURIComponent(from)}`,

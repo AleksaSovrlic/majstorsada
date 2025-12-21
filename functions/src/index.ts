@@ -45,8 +45,10 @@ const corsHandler = cors({
       if (!origin) return callback(null, true)
       const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)
       const isFirebaseHosting = /^https:\/\/[a-z0-9-]+\.web\.app$/i.test(origin) || /^https:\/\/[a-z0-9-]+\.firebaseapp\.com$/i.test(origin)
+      // Custom production domains (Firebase Hosting custom domain via Cloudflare/DNS)
+      const isCustomDomain = origin === 'https://majstorsada.rs' || origin === 'https://www.majstorsada.rs'
       const whitelisted = (process.env.WEB_APP_ORIGIN && origin === process.env.WEB_APP_ORIGIN)
-      const allowed = isLocal || isFirebaseHosting || !!whitelisted
+      const allowed = isLocal || isFirebaseHosting || isCustomDomain || !!whitelisted
       callback(null, allowed)
     } catch {
       callback(null, false)

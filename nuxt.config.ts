@@ -47,6 +47,9 @@ export default defineNuxtConfig({
   },
   runtimeConfig: {
     public: {
+      // Canonical public origin (used for Auth email links / deep links in production).
+      // Set NUXT_PUBLIC_SITE_URL to override (e.g. staging). Defaults to branded domain.
+      siteUrl: process.env.NUXT_PUBLIC_SITE_URL || 'https://majstorsada.rs',
       firebase: {
         apiKey: process.env.NUXT_PUBLIC_FIREBASE_API_KEY || 'demo-api-key',
         authDomain: process.env.NUXT_PUBLIC_FIREBASE_AUTH_DOMAIN || 'localhost',

@@ -13,6 +13,11 @@
       </div>
 
       <p v-if="errorMsg" class="text-red-600 text-sm mt-4">{{ errorMsg }}</p>
+      <div v-if="errorMsg" class="mt-4">
+        <NuxtLink :to="loginHref" class="text-sm text-gray-600 underline hover:text-gray-800">
+          Nazad na prijavu
+        </NuxtLink>
+      </div>
     </div>
   </div>
 </template>
@@ -74,6 +79,8 @@ async function completeSignIn() {
   } catch (e: any) {
     if (e?.code === 'auth/invalid-action-code') {
       errorMsg.value = 'Link je istekao ili je već iskorišćen.'
+    } else if (e?.code === 'auth/invalid-email') {
+      errorMsg.value = 'E-mail adresa nije validna.'
     } else {
       errorMsg.value = e?.message || 'Neuspešna prijava preko linka.'
     }
@@ -83,8 +90,44 @@ async function completeSignIn() {
 }
 
 function redirectAfter() {
-  const from = (route.query.from as string) || sessionStorage.getItem('postAuthRedirect') || '/zahtev'
-  router.replace(from)
+  // Prefer explicit `from` param; fall back to encoded `continueUrl` if Firebase action links land on `/`
+  // and finally to sessionStorage/default.
+  const safeReplace = (target: string) => {
+    // Prevent open redirects; allow only app-internal paths.
+    if (target.startsWith('/') && !target.startsWith('//')) {
+      return router.replace(target)
+    }
+    return router.replace('/zahtev')
+  }
+
+  const explicitFrom = route.query.from
+  if (typeof explicitFrom === 'string' && explicitFrom) {
+    return safeReplace(explicitFrom)
+  }
+
+  const continueUrl = route.query.continueUrl
+  if (typeof continueUrl === 'string' && continueUrl) {
+    // `continueUrl` can be encoded (or partially encoded). Try both decoded and raw.
+    const candidates = [continueUrl]
+    try {
+      const decoded = decodeURIComponent(continueUrl)
+      if (decoded && decoded !== continueUrl) candidates.unshift(decoded)
+    } catch {
+      // ignore decode errors
+    }
+    for (const c of candidates) {
+      try {
+        const u = new URL(c)
+        const f = u.searchParams.get('from')
+        if (f) return safeReplace(f)
+      } catch {
+        // ignore parse errors
+      }
+    }
+  }
+
+  const stored = sessionStorage.getItem('postAuthRedirect')
+  return safeReplace(stored || '/zahtev')
 }
 
 const loginHref = computed(() => {
