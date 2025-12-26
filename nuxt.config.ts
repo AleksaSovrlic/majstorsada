@@ -61,7 +61,9 @@ export default defineNuxtConfig({
         functionsRegion: process.env.NUXT_PUBLIC_FIREBASE_FUNCTIONS_REGION || 'europe-west3',
       },
       // Keep VAPID key outside nested firebase object to match current types
-      firebaseVapidKey: process.env.NUXT_PUBLIC_FIREBASE_MESSAGING_VAPID_KEY || ''
+      firebaseVapidKey: process.env.NUXT_PUBLIC_FIREBASE_MESSAGING_VAPID_KEY || '',
+      // Mapbox public token (used by client-side Geocoding autocomplete)
+      mapboxToken: process.env.NUXT_PUBLIC_MAPBOX_TOKEN || ''
     }
   }
 })

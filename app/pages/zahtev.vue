@@ -24,7 +24,10 @@
         </div>
         <div>
           <label class="block text-sm text-gray-700 mb-1">Adresa</label>
-          <input v-model="location" type="text" class="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Ulica i broj, grad" />
+          <AppLocationInput v-model="addressText" v-model:selected="selectedLocation" placeholder="Počnite da kucate i izaberite iz liste" />
+          <p v-if="addressText && !selectedLocation" class="mt-1 text-sm text-red-600">
+            Morate izabrati adresu iz liste kako bismo dobili tačne koordinate.
+          </p>
         </div>
         <div>
           <label class="block text-sm text-gray-700 mb-1">Kontakt telefon</label>
@@ -38,7 +41,11 @@
           <input type="file" accept="image/*" @change="onFile" class="w-full text-sm text-gray-600" />
         </div>
 
-        <button type="submit" :disabled="submitting" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-3 rounded-lg shadow active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed">
+        <button
+          type="submit"
+          :disabled="submitting || !phoneValid || !specializationRequired || !selectedLocation"
+          class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-3 rounded-lg shadow active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed"
+        >
           {{ submitting ? 'Slanje...' : '[ Pošalji Zahtev ]' }}
         </button>
         <p v-if="errorMsg" class="text-red-600 text-sm">{{ errorMsg }}</p>
@@ -53,6 +60,7 @@ import { useJobStore } from '@/stores/job'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { parsePhoneNumberFromString } from 'libphonenumber-js'
+import AppLocationInput, { type LocationSelection } from '@/components/AppLocationInput.vue'
 
 definePageMeta({
   middleware: ['client-auth']
@@ -63,7 +71,8 @@ const jobStore = useJobStore()
 const authStore = useAuthStore()
 
 const problemDescription = ref('')
-const location = ref('')
+const addressText = ref('')
+const selectedLocation = ref<LocationSelection | null>(null)
 const contactPhone = ref('')
 const imageFile = ref<File | null>(null)
 const specializationRequired = ref('')
@@ -97,9 +106,14 @@ async function submit() {
     if (!phoneValid.value) {
       throw new Error('Molimo unesite ispravan broj telefona.')
     }
+    if (!selectedLocation.value) {
+      throw new Error('Molimo izaberite adresu iz liste.')
+    }
     await jobStore.createJob({
       problemDescription: problemDescription.value,
-      location: location.value,
+      address: selectedLocation.value.address,
+      coordinates: selectedLocation.value.coordinates,
+      city: selectedLocation.value.city,
       contactPhone: e164Phone.value,
       specializationRequired: specializationRequired.value,
       // image upload is out of scope now; pass null/undefined
