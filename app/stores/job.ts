@@ -3,6 +3,7 @@ import { GeoPoint, addDoc, collection, serverTimestamp } from 'firebase/firestor
 import { getAuth } from 'firebase/auth'
 import { geohashForLocation } from 'geofire-common'
 import { isWithinBelgradeBbox } from '@/utils/geofence'
+import { DEFAULT_CITY } from '@/utils/cities'
 
 interface CreateJobInput {
   problemDescription: string
@@ -28,7 +29,6 @@ export const useJobStore = defineStore('job', {
       const address = (input.address || '').trim()
       const lat = Number(input.coordinates?.lat)
       const lng = Number(input.coordinates?.lng)
-      const city = typeof input.city === 'string' ? input.city.trim() : null
       if (!address) {
         throw new Error('Molimo izaberite adresu iz liste.')
       }
@@ -42,6 +42,10 @@ export const useJobStore = defineStore('job', {
         throw new Error('Trenutno primamo zahteve samo na širem području Beograda.')
       }
 
+      // Canonical city:
+      // Do NOT trust Mapbox city strings ("Belgrade", "Grad Beograd", municipality names, etc.).
+      // Instead, rely on our hard geofence: if within Belgrade bbox, force city = "Beograd".
+      const city = DEFAULT_CITY
       const geoPoint = new GeoPoint(lat, lng)
       const geohash = geohashForLocation([lat, lng])
       const payload = {
@@ -49,7 +53,7 @@ export const useJobStore = defineStore('job', {
         // Backwards-compat: keep legacy `location` populated for existing UI and notifications.
         location: address,
         address,
-        city: city && city.length ? city : null,
+        city,
         coordinates: geoPoint,
         geohash,
         contactPhone: input.contactPhone,

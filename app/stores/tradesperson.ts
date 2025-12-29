@@ -1,11 +1,13 @@
 import { defineStore } from 'pinia'
 import { doc, onSnapshot, updateDoc } from 'firebase/firestore'
+import type { SupportedCity } from '@/utils/cities'
 
 export interface TradespersonProfile {
   uid: string
   displayName: string
   phoneNumber: string
   specialization: string
+  city?: string
   status: 'available' | 'unavailable'
   balanceTokens: number
   notificationPreference: 'push' | 'viber' | 'sms'
@@ -85,6 +87,13 @@ export const useTradespersonStore = defineStore('tradesperson', {
       const { $firestore } = useNuxtApp()
       const ref = doc($firestore, 'tradespeople', profile.uid)
       await updateDoc(ref, { notificationPreference: pref })
+    },
+    async setCity(city: SupportedCity) {
+      const profile = this.profile
+      if (!profile) return
+      const { $firestore } = useNuxtApp()
+      const ref = doc($firestore, 'tradespeople', profile.uid)
+      await updateDoc(ref, { city })
     },
     async dismissJob(jobId: string) {
       const profile = this.profile

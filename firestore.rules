@@ -8,6 +8,18 @@ service cloud.firestore {
     function isOwner(uid) { return isAuthenticated() && request.auth.uid == uid; }
     function isTradespersonUser() { return isAuthenticated() && exists(/databases/$(database)/documents/tradespeople/$(request.auth.uid)); }
     function userSpecialization() { return isTradespersonUser() ? get(/databases/$(database)/documents/tradespeople/$(request.auth.uid)).data.specialization : null; }
+    function isSupportedCity(city) { return city == "Beograd"; }
+    function userCity() {
+      // NOTE: Firestore Rules do NOT support JS-style `if (...) return ...;` statements.
+      // Keep it expression-based and safe.
+      return isTradespersonUser()
+        // Silent fallback for legacy profiles without city: treat as "Beograd".
+        ? (("city" in get(/databases/$(database)/documents/tradespeople/$(request.auth.uid)).data)
+            && get(/databases/$(database)/documents/tradespeople/$(request.auth.uid)).data.city != null
+            ? get(/databases/$(database)/documents/tradespeople/$(request.auth.uid)).data.city
+            : "Beograd")
+        : null;
+    }
 
     // Default deny
     match /{document=**} { allow read, write: if false; }
@@ -29,7 +41,7 @@ service cloud.firestore {
     // tradespeople
     match /tradespeople/{uid} {
       allow read: if isOwner(uid) || isAdmin();
-      allow create: if isOwner(uid);
+      allow create: if isOwner(uid) && isSupportedCity(request.resource.data.city);
       allow update: if isOwner(uid) && isAllowedTradespersonOwnerUpdate();
       allow delete: if false;
 
@@ -43,12 +55,16 @@ service cloud.firestore {
       allow create: if isAuthenticated()
                     && request.resource.data.clientId == request.auth.uid
                     && request.resource.data.status == "pending"
+                    && isSupportedCity(request.resource.data.city)
                     && !("acceptedByTradespersonId" in request.resource.data);
 
       allow read: if isAdmin()
                   || (isAuthenticated() && resource.data.clientId == request.auth.uid)
                   || (isTradespersonUser() && (
-                        (resource.data.status == "pending" && resource.data.specializationRequired == userSpecialization())
+                        (resource.data.status == "pending"
+                          && resource.data.specializationRequired == userSpecialization()
+                          && isSupportedCity(resource.data.city)
+                          && resource.data.city == userCity())
                         || (resource.data.acceptedByTradespersonId == request.auth.uid)
                      ));
 
@@ -59,16 +75,17 @@ service cloud.firestore {
       let old = resource.data;
       let neu = request.resource.data;
       // Dodat 'notificationPreference' u allowedKeys
-      let allowedKeys = ["status", "dismissedJobs", "displayName", "phoneNumber", "specialization", "notificationPreference"];
+      let allowedKeys = ["status", "dismissedJobs", "displayName", "phoneNumber", "specialization", "city", "notificationPreference"];
       let forbiddenKeys = ["balanceTokens", "ratingSum", "ratingCount", "averageRating"];
       let changed = neu.diff(old).changedKeys();
       let noForbiddenChanged = !changed.hasAny(forbiddenKeys);
       let onlyAllowed = changed.hasOnly(allowedKeys);
       // Eksplicitna validacija status vrednosti (bez 'in' nad listom)
       let statusOk = !("status" in neu) || (neu.status == "available" || neu.status == "unavailable");
+      let cityOk = !("city" in neu) || isSupportedCity(neu.city);
       // Bez lambda/iteracija: tip liste + gornja granica veličine; dozvoli null
       let dismissedOk = !("dismissedJobs" in neu) || (neu.dismissedJobs == null) || (neu.dismissedJobs is list && neu.dismissedJobs.size() <= 200);
-      return noForbiddenChanged && onlyAllowed && statusOk && dismissedOk;
+      return noForbiddenChanged && onlyAllowed && statusOk && cityOk && dismissedOk;
     }
   }
 }

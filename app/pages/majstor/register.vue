@@ -35,6 +35,12 @@
             <option value="bravar">Bravar</option>
           </select>
         </div>
+        <div>
+          <label class="block text-sm text-gray-700 mb-1">Grad</label>
+          <select v-model="city" required class="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option v-for="c in SUPPORTED_CITIES" :key="c" :value="c">{{ c }}</option>
+          </select>
+        </div>
 
         <button type="submit" :disabled="loading || !phoneValid" class="w-full rounded-md bg-blue-600 text-white py-2.5 font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.99]">
           {{ loading ? 'Kreiranje naloga...' : 'Registruj se' }}
@@ -57,6 +63,7 @@ import { createUserWithEmailAndPassword } from 'firebase/auth'
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { useAuthStore } from '@/stores/auth'
 import { parsePhoneNumberFromString } from 'libphonenumber-js'
+import { DEFAULT_CITY, SUPPORTED_CITIES } from '@/utils/cities'
 
 definePageMeta({ layout: false })
 
@@ -68,6 +75,7 @@ const email = ref('')
 const phone = ref('')
 const password = ref('')
 const specialization = ref('')
+const city = ref(DEFAULT_CITY)
 const loading = ref(false)
 const errorMsg = ref('')
 const successMsg = ref('')
@@ -106,6 +114,7 @@ async function submit() {
       phoneNumber: e164Phone.value,
       email: cred.user.email || email.value,
       specialization: specialization.value,
+      city: city.value,
       status: 'unavailable',
       balanceTokens: 0,
       createdAt: serverTimestamp(),

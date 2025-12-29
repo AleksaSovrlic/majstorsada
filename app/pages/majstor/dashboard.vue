@@ -73,6 +73,7 @@ import NotificationsBanner from '@/components/majstor/NotificationsBanner.vue'
 import { collection, onSnapshot, query, where } from 'firebase/firestore'
 import { useAuthStore } from '@/stores/auth'
 import { useTradespersonStore } from '@/stores/tradesperson'
+import { DEFAULT_CITY } from '@/utils/cities'
 
 definePageMeta({ layout: 'majstor', middleware: 'auth' })
 
@@ -99,7 +100,14 @@ function startJobsFeed() {
     newJobs.value = []
     return
   }
-  const constraints: any[] = [where('status', '==', 'pending'), where('specializationRequired', '==', spec)]
+  // Silent fallback: if tradesperson has no city yet, treat them as "Beograd".
+  const rawCity = (tpStore.profile as any)?.city
+  const city = typeof rawCity === 'string' && rawCity.trim().length ? rawCity.trim() : DEFAULT_CITY
+  const constraints: any[] = [
+    where('status', '==', 'pending'),
+    where('specializationRequired', '==', spec),
+    where('city', '==', city)
+  ]
   const q = query(col, ...constraints)
   unsub = onSnapshot(q, (snap) => {
     const raw = snap.docs.map((d) => ({ jobId: d.id, ...(d.data() as any) }))
@@ -168,7 +176,7 @@ onMounted(async () => {
 })
 
 watch(
-  () => ({ status: tpStore.profile?.status, spec: tpStore.profile?.specialization }),
+  () => ({ status: tpStore.profile?.status, spec: tpStore.profile?.specialization, city: (tpStore.profile as any)?.city }),
   () => {
     if (tpStore.profile?.status !== 'available') {
       stopPendingFeed()
@@ -182,6 +190,10 @@ watch(
 
 watch(() => auth.currentUser?.uid, () => {
   // Re-subscribe owned feeds if UID becomes available or changes
+  const uid = auth.currentUser?.uid
+  if (uid) {
+    tpStore.subscribeProfile(uid)
+  }
   startOwnedFeeds()
   if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
     const nuxt = useNuxtApp() as any

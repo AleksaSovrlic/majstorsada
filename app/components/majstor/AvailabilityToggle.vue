@@ -2,22 +2,28 @@
   <div class="bg-white rounded-xl shadow p-4 flex items-center justify-between">
     <div>
       <div class="text-sm text-gray-500">Status</div>
-      <div class="text-lg font-semibold" :class="isAvailable ? 'text-blue-700' : 'text-gray-700'">
-        {{ isAvailable ? 'Dostupan' : 'Nedostupan' }}
+      <div
+        class="text-lg font-semibold"
+        :class="[
+          isLoading ? 'text-gray-500' : (isAvailable ? 'text-blue-700' : 'text-gray-700'),
+          isLoading ? 'animate-pulse' : ''
+        ]"
+      >
+        {{ isLoading ? 'Učitavanje...' : (isAvailable ? 'Dostupan' : 'Nedostupan') }}
       </div>
     </div>
 
     <button
-      :disabled="toggling"
+      :disabled="isDisabled"
       @click="onToggle"
       class="relative w-16 h-9 rounded-full transition-colors"
       :class="[
         isAvailable ? 'bg-blue-600' : 'bg-gray-300',
-        toggling ? 'opacity-60 cursor-not-allowed' : ''
+        isDisabled ? 'opacity-60 cursor-not-allowed' : ''
       ]"
       role="switch"
-      :aria-checked="isAvailable"
-      :aria-busy="toggling"
+      :aria-checked="isAvailable ? 'true' : 'false'"
+      :aria-busy="(toggling || isLoading) ? 'true' : 'false'"
     >
       <span
         class="absolute top-1 left-1 w-7 h-7 rounded-full bg-white shadow transform transition-transform"
@@ -36,12 +42,14 @@ import { useTradespersonStore } from '@/stores/tradesperson'
 
 const store = useTradespersonStore()
 const isAvailable = computed(() => store.profile?.status === 'available')
+const isLoading = computed(() => !store.profile)
 
 const toggling = ref(false)
 const errorMsg = ref('')
+const isDisabled = computed(() => toggling.value || isLoading.value)
 
 async function onToggle() {
-  if (!store.profile || toggling.value) {
+  if (isDisabled.value) {
     console.log('[AvailabilityToggle] onToggle: blocked', {
       hasProfile: !!store.profile,
       toggling: toggling.value
