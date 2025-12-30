@@ -112,7 +112,8 @@ function startJobsFeed() {
   unsub = onSnapshot(q, (snap) => {
     const raw = snap.docs.map((d) => ({ jobId: d.id, ...(d.data() as any) }))
     const dismissed = new Set(tpStore.profile?.dismissedJobs || [])
-    newJobs.value = raw.filter((j) => !dismissed.has(j.jobId))
+    // Hide jobs that are still uploading images (Option B): they become visible once `imagesReady` flips to true.
+    newJobs.value = raw.filter((j) => !dismissed.has(j.jobId) && j.imagesReady !== false)
   })
 }
 function startOwnedFeeds() {

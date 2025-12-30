@@ -1,0 +1,75 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isAuthenticated() { return request.auth != null; }
+    function isAdmin() {
+      return isAuthenticated()
+        && firestore.exists(/databases/(default)/documents/admins/$(request.auth.uid));
+    }
+    function isTradespersonUser() {
+      return isAuthenticated()
+        && firestore.exists(/databases/(default)/documents/tradespeople/$(request.auth.uid));
+    }
+    function tradespersonDoc() {
+      return firestore.get(/databases/(default)/documents/tradespeople/$(request.auth.uid)).data;
+    }
+    function userSpecialization() {
+      return isTradespersonUser() ? tradespersonDoc().specialization : null;
+    }
+    function userCity() {
+      // Silent fallback for legacy tradespeople without city.
+      return isTradespersonUser()
+        ? (("city" in tradespersonDoc()) && tradespersonDoc().city != null ? tradespersonDoc().city : "Beograd")
+        : null;
+    }
+    function isSupportedCity(city) { return city == "Beograd"; }
+
+    function jobExists(jobId) {
+      return firestore.exists(/databases/(default)/documents/jobs/$(jobId));
+    }
+    function jobDoc(jobId) {
+      return firestore.get(/databases/(default)/documents/jobs/$(jobId)).data;
+    }
+
+    function canReadJobImages(jobId) {
+      let j = jobDoc(jobId);
+      return isAdmin()
+        || (isAuthenticated() && j.clientId == request.auth.uid)
+        || (isTradespersonUser() && (
+          // Pending: only matching specialization + city (mirrors Firestore rules)
+          (j.status == "pending"
+            && j.specializationRequired == userSpecialization()
+            && isSupportedCity(j.city)
+            && j.city == userCity())
+          // Accepted/completed/etc: only the assignee tradesperson
+          || (j.acceptedByTradespersonId == request.auth.uid)
+        ));
+    }
+
+    function canWriteJobImage(jobId, file) {
+      let j = jobDoc(jobId);
+      let expectedPath = "jobs/" + jobId + "/" + file;
+      return isAuthenticated()
+        && j.clientId == request.auth.uid
+        && j.status == "pending"
+        && !("acceptedByTradespersonId" in j)
+        // Strong limit: only paths declared in Firestore are allowed to be uploaded.
+        && ("imagePaths" in j)
+        && (j.imagePaths is list)
+        && (j.imagePaths.size() <= 3)
+        && j.imagePaths.hasAny([expectedPath])
+        // Content restrictions
+        && request.resource.size < 3 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Jobs images: jobs/{jobId}/{filename}
+    match /jobs/{jobId}/{file} {
+      allow read: if jobExists(jobId) && canReadJobImages(jobId);
+      allow write: if jobExists(jobId) && canWriteJobImage(jobId, file);
+    }
+  }
+}
+
+

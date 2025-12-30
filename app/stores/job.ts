@@ -12,6 +12,7 @@ interface CreateJobInput {
   city: string | null
   contactPhone: string
   imageUrl?: string
+  imagesReady?: boolean
   specializationRequired: string
 }
 
@@ -58,6 +59,9 @@ export const useJobStore = defineStore('job', {
         geohash,
         contactPhone: input.contactPhone,
         imageUrl: input.imageUrl || null,
+        // Option B (robust): if images are being uploaded, we create the job with imagesReady=false.
+        // Tradespeople notifications and feed display will wait until it flips to true.
+        imagesReady: input.imagesReady === false ? false : true,
         specializationRequired: input.specializationRequired,
         clientId: currentUser.uid,
         clientEmail: currentUser.email || '',

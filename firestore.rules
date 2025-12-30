@@ -68,8 +68,42 @@ service cloud.firestore {
                         || (resource.data.acceptedByTradespersonId == request.auth.uid)
                      ));
 
-      allow update: if isClientCancellingOwnPendingJob();
+      allow update: if isClientCancellingOwnPendingJob()
+                    || isClientAttachingImagesToOwnPendingJob(jobId);
       allow delete: if false;
+    }
+
+    function isClientAttachingImagesToOwnPendingJob(jobId) {
+      let old = resource.data;
+      let neu = request.resource.data;
+      let changed = neu.diff(old).changedKeys();
+      // Only allow adding/updating imagePaths + imagesUpdatedAt (no other mutations).
+      let onlyAllowed = changed.hasOnly(["imagePaths", "imagesUpdatedAt", "imagesReady"]);
+      let ownerOk = isAuthenticated() && old.clientId == request.auth.uid;
+      let statusOk = old.status == "pending" && neu.status == old.status;
+      let notAccepted = !("acceptedByTradespersonId" in old);
+
+      let pathsOk =
+        ("imagePaths" in neu)
+        && (neu.imagePaths is list)
+        && (neu.imagePaths.size() <= 3)
+        // Validate each element (no loops in rules, so do it by index).
+        && (neu.imagePaths.size() == 0
+            || (neu.imagePaths[0] is string && neu.imagePaths[0].matches("^jobs/" + jobId + "/[^/]+$")))
+        && (neu.imagePaths.size() <= 1
+            || (neu.imagePaths[1] is string && neu.imagePaths[1].matches("^jobs/" + jobId + "/[^/]+$")))
+        && (neu.imagePaths.size() <= 2
+            || (neu.imagePaths[2] is string && neu.imagePaths[2].matches("^jobs/" + jobId + "/[^/]+$")));
+
+      // Require serverTimestamp to prevent client forging arbitrary times.
+      let updatedAtOk = ("imagesUpdatedAt" in neu) && neu.imagesUpdatedAt == request.time;
+      let readyOk =
+        ("imagesReady" in neu)
+        && (neu.imagesReady is bool)
+        // Disallow true -> false (monotonic)
+        && (!("imagesReady" in old) || old.imagesReady != true || neu.imagesReady == true);
+
+      return onlyAllowed && ownerOk && statusOk && notAccepted && pathsOk && updatedAtOk && readyOk;
     }
 
     function isClientCancellingOwnPendingJob() {

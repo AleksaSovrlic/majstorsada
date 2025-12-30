@@ -36,7 +36,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.notifyTradespeople = exports.updateTokensByAdmin = exports.buyTokens = exports.markJobAsComplete = exports.submitJobRating = exports.acceptJob = exports.health = void 0;
+exports.notifyTradespeopleOnImagesReady = exports.notifyTradespeople = exports.updateTokensByAdmin = exports.buyTokens = exports.markJobAsComplete = exports.submitJobRating = exports.acceptJob = exports.health = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const functions = __importStar(require("firebase-functions/v1"));
 // OBBRISANA LINIJA: import { region } from 'firebase-functions' <-- OVO JE PRAVILO PROBLEM
@@ -402,6 +402,12 @@ exports.notifyTradespeople = functions.region('europe-west3')
         logger.info('notifyTradespeople: Job not pending, skipping', { status: jobData.status });
         return;
     }
+    // Option B (robust): if the job is still uploading images, do NOT notify yet.
+    // We will notify on the first transition imagesReady: false -> true.
+    if (jobData.imagesReady === false) {
+        logger.info('notifyTradespeople: Job images not ready yet, skipping', { jobId: snap.id });
+        return;
+    }
     try {
         const snapshot = await db
             .collection('tradespeople')
@@ -476,5 +482,83 @@ exports.notifyTradespeople = functions.region('europe-west3')
     }
     catch (err) {
         logger.error('notifyTradespeople: query failed', { message: err?.message });
+    }
+});
+exports.notifyTradespeopleOnImagesReady = functions.region('europe-west3')
+    .firestore
+    .document('jobs/{jobId}')
+    .onUpdate(async (change, context) => {
+    const before = change.before.data();
+    const after = change.after.data();
+    if (!after)
+        return;
+    // Only notify once: first transition imagesReady false -> true
+    const wasReady = before?.imagesReady !== false;
+    const isReady = after?.imagesReady !== false;
+    if (wasReady || !isReady)
+        return;
+    const db = (0, firestore_1.getFirestore)();
+    const specializationRequired = after.specializationRequired;
+    if (!specializationRequired)
+        return;
+    if (after.status && after.status !== 'pending')
+        return;
+    try {
+        const snapshot = await db
+            .collection('tradespeople')
+            .where('specialization', '==', specializationRequired)
+            .where('status', '==', 'available')
+            .get();
+        const tokenRefs = [];
+        for (const tpSnap of snapshot.docs) {
+            const tpId = tpSnap.id;
+            const tSnap = await db.collection('tradespeople').doc(tpId).collection('fcmTokens').get();
+            tSnap.forEach((d) => {
+                const token = d.data()?.token;
+                if (token)
+                    tokenRefs.push({ token, refPath: d.ref.path });
+            });
+        }
+        if (tokenRefs.length === 0)
+            return;
+        const baseUrl = process.env.WEB_BASE_URL || (process.env.NODE_ENV === 'development' ? 'http://localhost:3333' : '');
+        const link = baseUrl ? `${baseUrl}/majstor/dashboard` : '/majstor/dashboard';
+        const messageBase = {
+            data: {
+                title: 'Novi posao dostupan',
+                body: `${after.specializationRequired}: ${after.location || ''}`.trim(),
+                link,
+                jobId: change.after.id,
+            },
+            webpush: { fcmOptions: { link } }
+        };
+        const chunkSize = 500;
+        const invalidCodes = new Set([
+            'messaging/registration-token-not-registered',
+            'messaging/invalid-registration-token'
+        ]);
+        const toDeletePaths = [];
+        for (let i = 0; i < tokenRefs.length; i += chunkSize) {
+            const chunk = tokenRefs.slice(i, i + chunkSize);
+            const tokens = chunk.map((c) => c.token);
+            const res = await (0, messaging_1.getMessaging)().sendEachForMulticast({ tokens, ...messageBase });
+            if (res.failureCount > 0) {
+                res.responses.forEach((r, idx) => {
+                    if (!r.success) {
+                        const code = r.error?.code;
+                        if (r.error && invalidCodes.has(code))
+                            toDeletePaths.push(chunk[idx].refPath);
+                    }
+                });
+            }
+        }
+        if (toDeletePaths.length) {
+            const batch = db.batch();
+            toDeletePaths.forEach((p) => batch.delete(db.doc(p)));
+            await batch.commit();
+        }
+    }
+    catch (err) {
+        logger.error('notifyTradespeopleOnImagesReady: failed', { message: err?.message });
     }
 });

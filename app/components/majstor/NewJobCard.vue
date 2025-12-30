@@ -6,10 +6,31 @@
         <div class="text-sm text-gray-600">{{ job.location }} · {{ job.specializationRequired }}</div>
       </div>
     </div>
+
+    <ClientOnly>
+      <div v-if="hasImages && !imagesReady" class="pt-2 text-sm text-gray-500">
+        Slike se još uvek uploaduju...
+      </div>
+      <div v-else-if="loadingImages" class="pt-2 text-sm text-gray-500">Učitavanje slika...</div>
+      <div v-else-if="imageUrls.length > 0" class="pt-2 flex items-center gap-2">
+        <button
+          v-for="(u, idx) in imageUrls"
+          :key="u"
+          type="button"
+          class="h-16 w-16 rounded-md overflow-hidden border border-gray-200 hover:border-gray-300"
+          @click="openImage(u)"
+          :aria-label="`Otvori sliku ${idx + 1}`"
+        >
+          <img :src="u" alt="Slika kvara" class="h-full w-full object-cover" />
+        </button>
+      </div>
+      <div v-else-if="imageErrorMsg" class="pt-2 text-sm text-red-600">{{ imageErrorMsg }}</div>
+    </ClientOnly>
+
     <div class="pt-2 flex items-center gap-2">
       <button
         class="px-4 py-2 rounded-md bg-green-600 text-white font-medium hover:bg-green-700 active:scale-[0.99]"
-        :disabled="accepting || acceptedOnce"
+        :disabled="accepting || acceptedOnce || (hasImages && !imagesReady)"
         @click="onAccept"
       >{{ accepting ? 'Prihvatanje...' : 'Prihvati' }}</button>
       <button
@@ -20,10 +41,26 @@
     <p v-if="errorMsg" class="text-red-600 text-sm">{{ errorMsg }}</p>
     <p v-if="successMsg" class="text-green-600 text-sm">{{ successMsg }}</p>
   </div>
+
+  <ClientOnly>
+    <div v-if="showImageModal" class="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" @click.self="closeImage">
+      <div class="max-w-3xl w-full">
+        <div class="bg-white rounded-xl shadow overflow-hidden">
+          <div class="flex items-center justify-between px-4 py-3 border-b">
+            <div class="text-sm font-medium text-gray-900">Slika kvara</div>
+            <button type="button" class="text-gray-600 hover:text-gray-900" @click="closeImage">Zatvori</button>
+          </div>
+          <div class="bg-black">
+            <img v-if="activeImageUrl" :src="activeImageUrl" alt="Slika kvara" class="max-h-[80vh] w-full object-contain" />
+          </div>
+        </div>
+      </div>
+    </div>
+  </ClientOnly>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 
 interface JobItem {
@@ -31,6 +68,9 @@ interface JobItem {
   problemDescription: string
   location: string
   specializationRequired: string
+  imagePaths?: string[]
+  imagesReady?: boolean
+  imagesUpdatedAt?: any
 }
 
 const props = defineProps<{ job: JobItem }>()
@@ -40,6 +80,84 @@ const accepting = ref(false)
 const errorMsg = ref('')
 const successMsg = ref('')
 const acceptedOnce = ref(false)
+
+const imageUrls = ref<string[]>([])
+const loadingImages = ref(false)
+const imageErrorMsg = ref('')
+const showImageModal = ref(false)
+const activeImageUrl = ref<string | null>(null)
+
+const hasImages = computed(() => Array.isArray(props.job?.imagePaths) && (props.job.imagePaths || []).length > 0)
+const imagesReady = computed(() => (props.job as any)?.imagesReady !== false)
+
+const cacheKey = computed(() => {
+  const ts = (props.job as any)?.imagesUpdatedAt
+  try {
+    if (ts && typeof ts.toMillis === 'function') return String(ts.toMillis())
+    if (ts && typeof ts.seconds === 'number') return String(ts.seconds)
+  } catch {
+    // ignore
+  }
+  return ''
+})
+
+function openImage(url: string) {
+  activeImageUrl.value = url
+  showImageModal.value = true
+}
+function closeImage() {
+  showImageModal.value = false
+  activeImageUrl.value = null
+}
+
+async function loadImageUrls() {
+  if (!import.meta.client) return
+  if (!imagesReady.value) {
+    imageUrls.value = []
+    imageErrorMsg.value = ''
+    return
+  }
+  const paths = Array.isArray(props.job?.imagePaths) ? props.job.imagePaths : []
+  if (!paths.length) {
+    imageUrls.value = []
+    imageErrorMsg.value = ''
+    return
+  }
+
+  const { $storage } = useNuxtApp() as any
+  if (!$storage) {
+    imageUrls.value = []
+    imageErrorMsg.value = 'Storage nije dostupan.'
+    return
+  }
+
+  loadingImages.value = true
+  imageErrorMsg.value = ''
+  try {
+    const { ref: storageRef, getDownloadURL } = await import('firebase/storage')
+    const key = cacheKey.value
+    const urls = await Promise.all(
+      paths.slice(0, 3).map(async (p) => {
+        const u = await getDownloadURL(storageRef($storage, p))
+        return key ? `${u}${u.includes('?') ? '&' : '?'}v=${encodeURIComponent(key)}` : u
+      })
+    )
+    imageUrls.value = urls
+  } catch {
+    imageUrls.value = []
+    imageErrorMsg.value = 'Ne mogu da učitam slike.'
+  } finally {
+    loadingImages.value = false
+  }
+}
+
+watch(
+  () => ({ paths: (props.job?.imagePaths || []).join('|'), ready: imagesReady.value, key: cacheKey.value }),
+  () => {
+    loadImageUrls()
+  },
+  { immediate: true }
+)
 
 async function onAccept() {
   accepting.value = true
