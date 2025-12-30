@@ -6,8 +6,18 @@
         <div v-for="j in pending" :key="j.jobId" class="bg-white rounded-xl shadow p-6">
           <div class="text-lg font-semibold text-gray-900">{{ j.problemDescription }}</div>
           <div class="text-sm text-gray-600 mt-1">{{ j.location }} · {{ j.specializationRequired }}</div>
+          <div class="pt-3 flex items-center justify-end">
+            <button
+              class="px-4 py-2 rounded-lg bg-red-600 text-white shadow-sm hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.99]"
+              :disabled="isCanceling(j.jobId)"
+              @click="cancelJob(j.jobId)"
+            >
+              {{ isCanceling(j.jobId) ? 'Otkazivanje...' : 'Otkaži zahtev' }}
+            </button>
+          </div>
         </div>
         <div v-if="pending.length === 0" class="text-sm text-gray-500">Nema poslova na čekanju.</div>
+        <p v-if="cancelErrorMsg" class="text-sm text-red-600">{{ cancelErrorMsg }}</p>
       </div>
     </section>
 
@@ -56,6 +66,20 @@
       </div>
     </section>
 
+    <section>
+      <h2 class="text-xl font-bold text-gray-900">Otkazani</h2>
+      <div class="mt-3 space-y-3">
+        <div v-for="j in canceled" :key="j.jobId" class="bg-white rounded-xl shadow p-6">
+          <div class="text-lg font-semibold text-gray-900">{{ j.problemDescription }}</div>
+          <div class="text-sm text-gray-600 mt-1">{{ j.location }} · {{ j.specializationRequired }}</div>
+          <div v-if="formatTimestamp(j.canceledAt)" class="text-xs text-gray-500 mt-2">
+            Otkazano: {{ formatTimestamp(j.canceledAt) }}
+          </div>
+        </div>
+        <div v-if="canceled.length === 0" class="text-sm text-gray-500">Nema otkazanih zahteva.</div>
+      </div>
+    </section>
+
     <div v-if="showModal" class="fixed inset-0 bg-black/30 flex items-center justify-center p-4">
       <div class="bg-white rounded-xl shadow p-6 w-full max-w-sm">
         <h3 class="text-lg font-semibold text-gray-900">Ocenite posao</h3>
@@ -74,7 +98,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue'
-import { collection, onSnapshot, query, where } from 'firebase/firestore'
+import { collection, doc, onSnapshot, orderBy, query, serverTimestamp, updateDoc, where } from 'firebase/firestore'
 import { useAuthStore } from '@/stores/auth'
 
 definePageMeta({ layout: 'klijent', middleware: 'client-auth' })
@@ -83,10 +107,15 @@ const auth = useAuthStore()
 const pending = ref<any[]>([])
 const accepted = ref<any[]>([])
 const completed = ref<any[]>([])
+const canceled = ref<any[]>([])
 
 let unsubPending: (() => void) | null = null
 let unsubAccepted: (() => void) | null = null
 let unsubCompleted: (() => void) | null = null
+let unsubCanceled: (() => void) | null = null
+
+const cancelingJobIds = ref<Set<string>>(new Set())
+const cancelErrorMsg = ref('')
 
 const showModal = ref(false)
 const ratingStars = ref<number | null>(null)
@@ -109,12 +138,19 @@ onMounted(async () => {
   unsubCompleted = onSnapshot(query(col, where('clientId', '==', user.uid), where('status', '==', 'completed')), (snap) => {
     completed.value = snap.docs.map((d) => ({ jobId: d.id, ...(d.data() as any) }))
   })
+  unsubCanceled = onSnapshot(
+    query(col, where('clientId', '==', user.uid), where('status', '==', 'canceled'), orderBy('canceledAt', 'desc')),
+    (snap) => {
+      canceled.value = snap.docs.map((d) => ({ jobId: d.id, ...(d.data() as any) }))
+    }
+  )
 })
 
 onBeforeUnmount(() => {
   if (unsubPending) { unsubPending(); unsubPending = null }
   if (unsubAccepted) { unsubAccepted(); unsubAccepted = null }
   if (unsubCompleted) { unsubCompleted(); unsubCompleted = null }
+  if (unsubCanceled) { unsubCanceled(); unsubCanceled = null }
 })
 
 function openRating(job: any) {
@@ -143,6 +179,50 @@ async function submitRating() {
   if (resp.ok) {
     // Optimistic: hide modal; onSnapshot will reveal rating
     showModal.value = false
+  }
+}
+
+function isCanceling(jobId: string): boolean {
+  return cancelingJobIds.value.has(jobId)
+}
+
+function formatTimestamp(ts: any): string {
+  if (!ts) return ''
+  try {
+    if (typeof ts?.toDate === 'function') {
+      return ts.toDate().toLocaleString('sr-RS')
+    }
+    if (ts instanceof Date) {
+      return ts.toLocaleString('sr-RS')
+    }
+  } catch {
+    // ignore
+  }
+  return ''
+}
+
+async function cancelJob(jobId: string) {
+  if (!jobId) return
+  if (isCanceling(jobId)) return
+  const ok = confirm('Da li ste sigurni da želite da otkažete ovaj zahtev?')
+  if (!ok) return
+
+  cancelErrorMsg.value = ''
+  cancelingJobIds.value = new Set(cancelingJobIds.value).add(jobId)
+  try {
+    const { $firestore } = useNuxtApp()
+    await updateDoc(doc($firestore, 'jobs', jobId), {
+      status: 'canceled',
+      canceledAt: serverTimestamp()
+    })
+    // Optimistic: immediately remove from pending list; onSnapshot will reconcile anyway.
+    pending.value = pending.value.filter((j) => j.jobId !== jobId)
+  } catch (e: any) {
+    cancelErrorMsg.value = e?.message || 'Greška pri otkazivanju zahteva.'
+  } finally {
+    const next = new Set(cancelingJobIds.value)
+    next.delete(jobId)
+    cancelingJobIds.value = next
   }
 }
 </script>

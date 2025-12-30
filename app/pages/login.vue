@@ -86,7 +86,7 @@ async function sendLink() {
     await sendSignInLinkToEmail($firebaseAuth, email.value, actionCodeSettings)
     localStorage.setItem('emailForSignIn', email.value)
     infoMsg.value = 'Poslali smo vam Magic Link na e-mail. Otvorite link da dovršite prijavu.'
-    startCooldown(30)
+    startCooldown(10)
   } catch (e: any) {
     if (e?.code === 'auth/invalid-email') {
       errorMsg.value = 'Neispravan e-mail.'

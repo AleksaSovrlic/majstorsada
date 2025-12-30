@@ -68,7 +68,24 @@ service cloud.firestore {
                         || (resource.data.acceptedByTradespersonId == request.auth.uid)
                      ));
 
-      allow update, delete: if false;
+      allow update: if isClientCancellingOwnPendingJob();
+      allow delete: if false;
+    }
+
+    function isClientCancellingOwnPendingJob() {
+      let old = resource.data;
+      let neu = request.resource.data;
+      let changed = neu.diff(old).changedKeys();
+      // Allow ONLY a strict state transition: pending -> canceled, by the owner client,
+      // and require canceledAt == request.time (serverTimestamp).
+      return isAuthenticated()
+        && old.clientId == request.auth.uid
+        && old.status == "pending"
+        && neu.status == "canceled"
+        && !("acceptedByTradespersonId" in old)
+        && changed.hasOnly(["status", "canceledAt"])
+        && ("canceledAt" in neu)
+        && neu.canceledAt == request.time;
     }
 
     function isAllowedTradespersonOwnerUpdate() {
