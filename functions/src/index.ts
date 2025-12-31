@@ -71,6 +71,97 @@ async function verifyBearer(req: any): Promise<{ uid: string; email?: string } |
   }
 }
 
+type PushEventName = 'notifyTradespeople' | 'notifyTradespeopleOnImagesReady'
+type TokenRef = { token: string; refPath: string }
+
+async function sendJobAvailablePush(opts: {
+  event: PushEventName
+  jobId: string
+  specializationRequired: string
+  location?: string
+}) {
+  const { event, jobId, specializationRequired, location } = opts
+  const db = getFirestore()
+
+  const snapshot = await db
+    .collection('tradespeople')
+    .where('specialization', '==', specializationRequired)
+    .where('status', '==', 'available')
+    .get()
+
+  logger.info(`${event}: matching tradespeople`, {
+    count: snapshot.size,
+    specializationRequired,
+    jobId
+  })
+
+  const tokenRefs: TokenRef[] = []
+  for (const tpSnap of snapshot.docs) {
+    const tpId = tpSnap.id
+    const tSnap = await db.collection('tradespeople').doc(tpId).collection('fcmTokens').get()
+    tSnap.forEach((d) => {
+      const token = (d.data() as any)?.token
+      if (token) tokenRefs.push({ token, refPath: d.ref.path })
+    })
+  }
+
+  if (tokenRefs.length === 0) {
+    logger.info(`${event}: no tokens to notify`, { jobId })
+    return
+  }
+
+  const baseUrl = process.env.WEB_BASE_URL || (process.env.NODE_ENV === 'development' ? 'http://localhost:3333' : '')
+  const link = baseUrl ? `${baseUrl}/majstor/dashboard` : '/majstor/dashboard'
+  const messageBase = {
+    // strict data-only payload; SW renders
+    data: {
+      title: 'Novi posao dostupan',
+      body: `${specializationRequired}: ${location || ''}`.trim(),
+      link,
+      jobId,
+    },
+    webpush: { fcmOptions: { link } }
+  }
+
+  const chunkSize = 500
+  let totalSuccess = 0
+  let totalFailure = 0
+  const invalidCodes = new Set([
+    'messaging/registration-token-not-registered',
+    'messaging/invalid-registration-token'
+  ])
+  const toDeletePaths: string[] = []
+
+  for (let i = 0; i < tokenRefs.length; i += chunkSize) {
+    const chunk = tokenRefs.slice(i, i + chunkSize)
+    const tokens = chunk.map((c) => c.token)
+    const res = await getMessaging().sendEachForMulticast({ tokens, ...(messageBase as any) })
+    totalSuccess += res.successCount
+    totalFailure += res.failureCount
+    if (res.failureCount > 0) {
+      res.responses.forEach((r, idx) => {
+        if (!r.success) {
+          const token = tokens[idx]
+          const tokenSuffix = token ? token.slice(-8) : 'unknown'
+          const code = (r.error as any)?.code
+          const message = r.error?.message
+          logger.error(`${event}: send failure`, { idx, code, message, tokenSuffix, jobId })
+          if (r.error && invalidCodes.has(code)) toDeletePaths.push(chunk[idx].refPath)
+        }
+      })
+    }
+  }
+
+  logger.info(`${event}: push results`, { success: totalSuccess, failure: totalFailure, tokens: tokenRefs.length, jobId })
+
+  if (toDeletePaths.length) {
+    const batch = db.batch()
+    toDeletePaths.forEach((p) => batch.delete(db.doc(p)))
+    await batch.commit()
+    logger.info(`${event}: cleaned invalid tokens`, { count: toDeletePaths.length, jobId })
+  }
+}
+
 export const acceptJob = onRequest({ region: 'europe-west3' }, (req, res) => {
   corsHandler(req, res, async () => {
     if (req.method === 'OPTIONS') return res.status(204).send('')
@@ -121,6 +212,13 @@ export const acceptJob = onRequest({ region: 'europe-west3' }, (req, res) => {
           acceptedByTradespersonProfile: {
             displayName: (tp.displayName || '').toString(),
             phoneNumber: (tp.phoneNumber || '').toString(),
+            bio: (tp.bio && typeof tp.bio === 'string' && tp.bio.trim().length)
+              ? tp.bio.toString().slice(0, 500)
+              : null,
+            avatarPath: (tp.avatarPath && typeof tp.avatarPath === 'string' && tp.avatarPath.trim().length)
+              ? tp.avatarPath.toString()
+              : null,
+            avatarUpdatedAt: tp.avatarUpdatedAt ?? null,
             averageRating: Number(tp.averageRating ?? 0),
             ratingCount: Number(tp.ratingCount ?? 0)
           }
@@ -352,7 +450,6 @@ export const notifyTradespeople = functions.region('europe-west3')
   .firestore
   .document('jobs/{jobId}')
   .onCreate(async (snap, context) => {
-    const db = getFirestore()
     const jobData = snap.data()
     if (!jobData) {
       logger.warn('notifyTradespeople: No job data found')
@@ -376,80 +473,12 @@ export const notifyTradespeople = functions.region('europe-west3')
     }
 
     try {
-      const snapshot = await db
-        .collection('tradespeople')
-        .where('specialization', '==', specializationRequired)
-        .where('status', '==', 'available')
-        .get()
-
-      logger.info('notifyTradespeople: matching tradespeople', {
-        count: snapshot.size,
-        specializationRequired
+      await sendJobAvailablePush({
+        event: 'notifyTradespeople',
+        jobId: snap.id,
+        specializationRequired,
+        location: jobData.location
       })
-      type TokenRef = { token: string; refPath: string }
-      const tokenRefs: TokenRef[] = []
-      for (const tpSnap of snapshot.docs) {
-        const tpId = tpSnap.id
-        const tSnap = await db.collection('tradespeople').doc(tpId).collection('fcmTokens').get()
-        tSnap.forEach((d) => {
-          const token = (d.data() as any)?.token
-          if (token) tokenRefs.push({ token, refPath: d.ref.path })
-        })
-      }
-
-      if (tokenRefs.length === 0) {
-        logger.info('notifyTradespeople: no tokens to notify')
-        return
-      }
-
-      const baseUrl = process.env.WEB_BASE_URL || (process.env.NODE_ENV === 'development' ? 'http://localhost:3333' : '')
-      const link = baseUrl ? `${baseUrl}/majstor/dashboard` : '/majstor/dashboard'
-      const messageBase = {
-        // strict data-only payload; SW renders
-        data: {
-          title: 'Novi posao dostupan',
-          body: `${jobData.specializationRequired}: ${jobData.location || ''}`.trim(),
-          link,
-          jobId: snap.id,
-        },
-        webpush: { fcmOptions: { link } }
-      }
-
-      const chunkSize = 500
-      let totalSuccess = 0
-      let totalFailure = 0
-      const invalidCodes = new Set([
-        'messaging/registration-token-not-registered',
-        'messaging/invalid-registration-token'
-      ])
-      const toDeletePaths: string[] = []
-      for (let i = 0; i < tokenRefs.length; i += chunkSize) {
-        const chunk = tokenRefs.slice(i, i + chunkSize)
-        const tokens = chunk.map((c) => c.token)
-        const res = await getMessaging().sendEachForMulticast({ tokens, ...(messageBase as any) })
-        totalSuccess += res.successCount
-        totalFailure += res.failureCount
-        if (res.failureCount > 0) {
-          res.responses.forEach((r, idx) => {
-            if (!r.success) {
-              const token = tokens[idx]
-              const tokenSuffix = token ? token.slice(-8) : 'unknown'
-              const code = (r.error as any)?.code
-              const message = r.error?.message
-              logger.error('notifyTradespeople: send failure', { idx, code, message, tokenSuffix, jobId: snap.id })
-              if (r.error && invalidCodes.has(code)) toDeletePaths.push(chunk[idx].refPath)
-            }
-          })
-        }
-      }
-      logger.info('notifyTradespeople: push results', { success: totalSuccess, failure: totalFailure })
-
-      if (toDeletePaths.length) {
-        const batch = db.batch()
-        toDeletePaths.forEach((p) => batch.delete(db.doc(p)))
-        await batch.commit()
-        logger.info('notifyTradespeople: cleaned invalid tokens', { count: toDeletePaths.length })
-      }
     } catch (err: any) {
       logger.error('notifyTradespeople: query failed', { message: err?.message })
     }
@@ -474,62 +503,12 @@ export const notifyTradespeopleOnImagesReady = functions.region('europe-west3')
     if (after.status && after.status !== 'pending') return
 
     try {
-      const snapshot = await db
-        .collection('tradespeople')
-        .where('specialization', '==', specializationRequired)
-        .where('status', '==', 'available')
-        .get()
-
-      type TokenRef = { token: string; refPath: string }
-      const tokenRefs: TokenRef[] = []
-      for (const tpSnap of snapshot.docs) {
-        const tpId = tpSnap.id
-        const tSnap = await db.collection('tradespeople').doc(tpId).collection('fcmTokens').get()
-        tSnap.forEach((d) => {
-          const token = (d.data() as any)?.token
-          if (token) tokenRefs.push({ token, refPath: d.ref.path })
-        })
-      }
-      if (tokenRefs.length === 0) return
-
-      const baseUrl = process.env.WEB_BASE_URL || (process.env.NODE_ENV === 'development' ? 'http://localhost:3333' : '')
-      const link = baseUrl ? `${baseUrl}/majstor/dashboard` : '/majstor/dashboard'
-      const messageBase = {
-        data: {
-          title: 'Novi posao dostupan',
-          body: `${after.specializationRequired}: ${after.location || ''}`.trim(),
-          link,
-          jobId: change.after.id,
-        },
-        webpush: { fcmOptions: { link } }
-      }
-
-      const chunkSize = 500
-      const invalidCodes = new Set([
-        'messaging/registration-token-not-registered',
-        'messaging/invalid-registration-token'
-      ])
-      const toDeletePaths: string[] = []
-
-      for (let i = 0; i < tokenRefs.length; i += chunkSize) {
-        const chunk = tokenRefs.slice(i, i + chunkSize)
-        const tokens = chunk.map((c) => c.token)
-        const res = await getMessaging().sendEachForMulticast({ tokens, ...(messageBase as any) })
-        if (res.failureCount > 0) {
-          res.responses.forEach((r, idx) => {
-            if (!r.success) {
-              const code = (r.error as any)?.code
-              if (r.error && invalidCodes.has(code)) toDeletePaths.push(chunk[idx].refPath)
-            }
-          })
-        }
-      }
-
-      if (toDeletePaths.length) {
-        const batch = db.batch()
-        toDeletePaths.forEach((p) => batch.delete(db.doc(p)))
-        await batch.commit()
-      }
+      await sendJobAvailablePush({
+        event: 'notifyTradespeopleOnImagesReady',
+        jobId: change.after.id,
+        specializationRequired,
+        location: after.location
+      })
     } catch (err: any) {
       logger.error('notifyTradespeopleOnImagesReady: failed', { message: err?.message })
     }

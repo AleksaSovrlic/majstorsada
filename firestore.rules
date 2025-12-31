@@ -42,7 +42,7 @@ service cloud.firestore {
     match /tradespeople/{uid} {
       allow read: if isOwner(uid) || isAdmin();
       allow create: if isOwner(uid) && isSupportedCity(request.resource.data.city);
-      allow update: if isOwner(uid) && isAllowedTradespersonOwnerUpdate();
+      allow update: if isOwner(uid) && isAllowedTradespersonOwnerUpdate(uid);
       allow delete: if false;
 
       match /fcmTokens/{tokenId} {
@@ -122,21 +122,40 @@ service cloud.firestore {
         && neu.canceledAt == request.time;
     }
 
-    function isAllowedTradespersonOwnerUpdate() {
+    function isAllowedTradespersonOwnerUpdate(uid) {
+      // NOTE: Firestore Rules have two important limitations:
+      // - path wildcards (like {uid}) are NOT available unless passed in or defined in scope
+      // - a function may have at most 10 `let` bindings
       let old = resource.data;
       let neu = request.resource.data;
-      // Dodat 'notificationPreference' u allowedKeys
-      let allowedKeys = ["status", "dismissedJobs", "displayName", "phoneNumber", "specialization", "city", "notificationPreference"];
-      let forbiddenKeys = ["balanceTokens", "ratingSum", "ratingCount", "averageRating"];
       let changed = neu.diff(old).changedKeys();
-      let noForbiddenChanged = !changed.hasAny(forbiddenKeys);
-      let onlyAllowed = changed.hasOnly(allowedKeys);
-      // Eksplicitna validacija status vrednosti (bez 'in' nad listom)
-      let statusOk = !("status" in neu) || (neu.status == "available" || neu.status == "unavailable");
-      let cityOk = !("city" in neu) || isSupportedCity(neu.city);
-      // Bez lambda/iteracija: tip liste + gornja granica veličine; dozvoli null
-      let dismissedOk = !("dismissedJobs" in neu) || (neu.dismissedJobs == null) || (neu.dismissedJobs is list && neu.dismissedJobs.size() <= 200);
-      return noForbiddenChanged && onlyAllowed && statusOk && cityOk && dismissedOk;
+
+      return !changed.hasAny(["balanceTokens", "ratingSum", "ratingCount", "averageRating"])
+        && changed.hasOnly([
+          "status",
+          "dismissedJobs",
+          "displayName",
+          "phoneNumber",
+          "specialization",
+          "city",
+          "notificationPreference",
+          // Profile fields
+          "bio",
+          "avatarPath",
+          "avatarUpdatedAt"
+        ])
+        // Eksplicitna validacija status vrednosti (bez 'in' nad listom)
+        && (!("status" in neu) || (neu.status == "available" || neu.status == "unavailable"))
+        && (!("city" in neu) || isSupportedCity(neu.city))
+        // Validate profile fields ONLY when they are being changed (request.resource.data contains the full resulting doc).
+        && (!changed.hasAny(["bio"]) || neu.bio == null || (neu.bio is string && neu.bio.size() <= 500))
+        && (!changed.hasAny(["avatarPath"]) || neu.avatarPath == null || (neu.avatarPath is string && neu.avatarPath.matches("^avatars/" + uid + "/profile\\.jpg$")))
+        // If avatarPath changes, avatarUpdatedAt must also change (cache bust + strong audit)
+        && (!changed.hasAny(["avatarPath"]) || changed.hasAny(["avatarUpdatedAt"]))
+        // Require serverTimestamp for avatarUpdatedAt ONLY when it is being changed
+        && (!changed.hasAny(["avatarUpdatedAt"]) || (neu.avatarUpdatedAt == request.time))
+        // Bez lambda/iteracija: tip liste + gornja granica veličine; dozvoli null
+        && (!("dismissedJobs" in neu) || (neu.dismissedJobs == null) || (neu.dismissedJobs is list && neu.dismissedJobs.size() <= 200));
     }
   }
 }

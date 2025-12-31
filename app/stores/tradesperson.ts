@@ -8,6 +8,9 @@ export interface TradespersonProfile {
   phoneNumber: string
   specialization: string
   city?: string
+  bio?: string
+  avatarPath?: string
+  avatarUpdatedAt?: any
   status: 'available' | 'unavailable'
   balanceTokens: number
   notificationPreference: 'push' | 'viber' | 'sms'
@@ -29,23 +32,11 @@ export const useTradespersonStore = defineStore('tradesperson', {
   }),
   actions: {
     async loadProfile(uid: string) {
-      console.log('[tradesperson] loadProfile POZVANA sa uid:', uid)
-      console.log('Tip primljenog UID-a:', typeof uid)
-
       if (!uid || typeof uid !== 'string') {
-        console.error('UID nije validan! Prekidam učitavanje profila.')
         return
       }
-
-      const { $firestore } = useNuxtApp()
-      this.unsubscribe()
-      const ref = doc($firestore, 'tradespeople', uid)
-      this._unsub = onSnapshot(ref, (snap) => {
-        const data = snap.exists() ? ({ ...(snap.data() as any), uid }) : null
-        console.log('[tradesperson] PODACI STIGLI IZ FIRESTORE-A:', data)
-        this.profile = data as unknown as TradespersonProfile | null
-        console.log('[tradesperson] Profil UPISAN u store:', this.profile)
-      })
+      // Backwards-compatible alias (older code used loadProfile)
+      this.subscribeProfile(uid)
     },
     subscribeProfile(uid: string) {
       const { $firestore } = useNuxtApp()
@@ -63,23 +54,11 @@ export const useTradespersonStore = defineStore('tradesperson', {
     },
     async setAvailability(isAvailable: boolean) {
       const profile = this.profile
-      console.log('[tradesperson] setAvailability called', {
-        isAvailable,
-        hasProfile: !!profile,
-        uid: profile?.uid
-      })
       if (!profile) return
       const { $firestore, $firebaseAuth } = useNuxtApp() as any
       const safeUid = ($firebaseAuth?.currentUser?.uid) || profile.uid
       const ref = doc($firestore, 'tradespeople', safeUid)
-      console.log('[tradesperson] updateDoc about to run', {
-        docPath: `tradespeople/${profile.uid}`,
-        status: isAvailable ? 'available' : 'unavailable'
-      })
       await updateDoc(ref, { status: isAvailable ? 'available' : 'unavailable' })
-      console.log('[tradesperson] updateDoc success', {
-        docPath: `tradespeople/${profile.uid}`
-      })
     },
     async setNotificationPreference(pref: 'push' | 'viber' | 'sms') {
       const profile = this.profile
@@ -100,7 +79,12 @@ export const useTradespersonStore = defineStore('tradesperson', {
       if (!profile) return
       const { $firestore } = useNuxtApp()
       const ref = doc($firestore, 'tradespeople', profile.uid)
-      await updateDoc(ref, { dismissedJobs: (await import('firebase/firestore')).arrayUnion(jobId) })
+      try {
+        await updateDoc(ref, { dismissedJobs: (await import('firebase/firestore')).arrayUnion(jobId) })
+      } catch (e: any) {
+        const msg = e?.message || 'Ne mogu da sačuvam odbijanje posla.'
+        throw new Error(msg)
+      }
     }
   }
 })

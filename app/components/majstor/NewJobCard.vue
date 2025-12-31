@@ -29,11 +29,13 @@
 
     <div class="pt-2 flex items-center gap-2">
       <button
+        type="button"
         class="px-4 py-2 rounded-md bg-green-600 text-white font-medium hover:bg-green-700 active:scale-[0.99]"
         :disabled="accepting || acceptedOnce || (hasImages && !imagesReady)"
         @click="onAccept"
       >{{ accepting ? 'Prihvatanje...' : 'Prihvati' }}</button>
       <button
+        type="button"
         class="px-4 py-2 rounded-md bg-gray-800 text-white font-medium hover:bg-gray-900 active:scale-[0.99]"
         @click="$emit('dismiss', job.jobId)"
       >Odbij</button>
@@ -62,6 +64,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { timestampCacheKey } from '@/utils/timestampCacheKey'
 
 interface JobItem {
   jobId: string
@@ -90,16 +93,7 @@ const activeImageUrl = ref<string | null>(null)
 const hasImages = computed(() => Array.isArray(props.job?.imagePaths) && (props.job.imagePaths || []).length > 0)
 const imagesReady = computed(() => (props.job as any)?.imagesReady !== false)
 
-const cacheKey = computed(() => {
-  const ts = (props.job as any)?.imagesUpdatedAt
-  try {
-    if (ts && typeof ts.toMillis === 'function') return String(ts.toMillis())
-    if (ts && typeof ts.seconds === 'number') return String(ts.seconds)
-  } catch {
-    // ignore
-  }
-  return ''
-})
+const cacheKey = computed(() => timestampCacheKey((props.job as any)?.imagesUpdatedAt))
 
 function openImage(url: string) {
   activeImageUrl.value = url

@@ -49,32 +49,20 @@ const errorMsg = ref('')
 const isDisabled = computed(() => toggling.value || isLoading.value)
 
 async function onToggle() {
-  if (isDisabled.value) {
-    console.log('[AvailabilityToggle] onToggle: blocked', {
-      hasProfile: !!store.profile,
-      toggling: toggling.value
-    })
-    return
-  }
+  if (isDisabled.value) return
   const next = !isAvailable.value
-  console.log('[AvailabilityToggle] onToggle: start', {
-    current: isAvailable.value,
-    next,
-    uid: store.profile?.uid
-  })
 
   errorMsg.value = ''
   toggling.value = true
   try {
-    console.log('[AvailabilityToggle] calling store.setAvailability', { next })
     await store.setAvailability(next)
-    console.log('[AvailabilityToggle] setAvailability resolved')
   } catch (e: any) {
-    console.error('[AvailabilityToggle] setAvailability error', e)
+    if (import.meta.dev) {
+      console.error('[AvailabilityToggle] setAvailability error', e)
+    }
     errorMsg.value = e?.message || 'Greška pri promeni dostupnosti.'
   } finally {
     toggling.value = false
-    console.log('[AvailabilityToggle] onToggle: end')
   }
 }
 </script>

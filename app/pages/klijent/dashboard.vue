@@ -27,23 +27,33 @@
         <div v-for="j in accepted" :key="j.jobId" class="bg-white rounded-xl shadow p-6">
           <div class="text-lg font-semibold text-gray-900">{{ j.problemDescription }}</div>
           <div class="text-sm text-gray-600 mt-1">{{ j.location }} · {{ j.specializationRequired }}</div>
-          <div v-if="j.acceptedByTradespersonProfile" class="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
-            <div>
-              <div class="text-gray-500">Majstor</div>
-              <div class="text-gray-900">{{ j.acceptedByTradespersonProfile.displayName || 'Nepoznato' }}</div>
-            </div>
-            <div>
-              <div class="text-gray-500">Ocena</div>
-              <div class="text-gray-900">
-                <span v-if="(j.acceptedByTradespersonProfile.averageRating || 0) > 0">
-                  {{ j.acceptedByTradespersonProfile.averageRating }} ★ ({{ j.acceptedByTradespersonProfile.ratingCount || 0 }})
-                </span>
-                <span v-else>Još nema ocena</span>
+          <div v-if="j.acceptedByTradespersonProfile" class="mt-3 flex items-start gap-3">
+            <ClientOnly>
+              <TradespersonAvatar
+                :path="j.acceptedByTradespersonProfile.avatarPath"
+                :updatedAt="j.acceptedByTradespersonProfile.avatarUpdatedAt"
+                :size="48"
+                alt="Profilna slika majstora"
+              />
+            </ClientOnly>
+            <div class="flex-1 min-w-0">
+              <div class="text-sm text-gray-500">Majstor</div>
+              <div class="text-gray-900 font-medium">{{ j.acceptedByTradespersonProfile.displayName || 'Nepoznato' }}</div>
+              <div v-if="((j.acceptedByTradespersonProfile.bio || '') + '').trim().length" class="mt-1 text-sm text-gray-700 whitespace-pre-line">
+                {{ j.acceptedByTradespersonProfile.bio }}
               </div>
-            </div>
-            <div>
-              <div class="text-gray-500">Telefon</div>
-              <div class="text-gray-900">{{ j.acceptedByTradespersonProfile.phoneNumber || '—' }}</div>
+              <div class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                <div v-if="(j.acceptedByTradespersonProfile.ratingCount || 0) > 0">
+                  <div class="text-gray-500">Ocena</div>
+                  <div class="text-gray-900">
+                    {{ j.acceptedByTradespersonProfile.averageRating }} ★ ({{ j.acceptedByTradespersonProfile.ratingCount }})
+                  </div>
+                </div>
+                <div>
+                  <div class="text-gray-500">Telefon</div>
+                  <div class="text-gray-900">{{ j.acceptedByTradespersonProfile.phoneNumber || '—' }}</div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -100,6 +110,7 @@
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { collection, doc, onSnapshot, orderBy, query, serverTimestamp, updateDoc, where } from 'firebase/firestore'
 import { useAuthStore } from '@/stores/auth'
+import TradespersonAvatar from '@/components/TradespersonAvatar.vue'
 
 definePageMeta({ layout: 'klijent', middleware: 'client-auth' })
 

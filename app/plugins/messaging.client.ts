@@ -91,7 +91,31 @@ export default defineNuxtPlugin({
     }
 
     onMessage(messaging, (payload) => {
-      console.log('[messaging] foreground message', payload)
+      if (import.meta.dev) {
+        console.log('[messaging] foreground message', payload)
+      }
+      try {
+        // If a Majstor tab is open but not visible/focused, FCM may still deliver the message
+        // to the page (onMessage) instead of the service worker. In that case, show a
+        // browser notification to preserve the expected "background" UX.
+        if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+        const isHidden = typeof document !== 'undefined' && document.visibilityState !== 'visible'
+        const noFocus = typeof document !== 'undefined' && typeof document.hasFocus === 'function' ? !document.hasFocus() : false
+        if (!isHidden && !noFocus) return
+
+        const data: any = (payload as any)?.data || {}
+        const title = (data?.title || 'Novi posao').toString()
+        const body = (data?.body || 'Pogledajte detalje u MajstorSada').toString()
+        const link = (data?.link || '/majstor/dashboard').toString()
+        const n = new Notification(title, { body, data: { ...data, link }, icon: '/favicon.ico' })
+        n.onclick = () => {
+          try { window.focus() } catch { /* noop */ }
+          try { window.location.href = link } catch { /* noop */ }
+          try { n.close() } catch { /* noop */ }
+        }
+      } catch {
+        // ignore
+      }
     })
 
     // Proaktivna registracija: čim je korisnik prijavljen i dozvola granted

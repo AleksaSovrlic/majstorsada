@@ -30,6 +30,7 @@
       <h2 class="text-xl font-bold text-gray-900">Novi poslovi</h2>
       <div class="pt-2 space-y-3">
         <NewJobCard v-for="j in newJobs" :key="j.jobId" :job="j" @dismiss="onDismiss(j.jobId)" @accepted="onAccepted" />
+        <p v-if="dismissErrorMsg" class="text-sm text-red-600">{{ dismissErrorMsg }}</p>
         <div v-if="newJobs.length === 0" class="text-sm text-gray-500 text-center py-6">Nema novih poslova trenutno.</div>
       </div>
     </section>
@@ -88,6 +89,8 @@ let unsubCompleted: (() => void) | null = null
 const finishingJobIds = new Set<string>()
 const errorMsg = ref('')
 const successMsg = ref('')
+const dismissingJobIds = ref<Set<string>>(new Set())
+const dismissErrorMsg = ref('')
 
 function startJobsFeed() {
   stopPendingFeed()
@@ -148,8 +151,27 @@ function stopOwnedFeeds() {
   if (unsubCompleted) { unsubCompleted(); unsubCompleted = null }
 }
 
-function onDismiss(jobId: string) {
-  tpStore.dismissJob(jobId)
+async function onDismiss(jobId: string) {
+  if (!jobId) return
+  if (dismissingJobIds.value.has(jobId)) return
+
+  dismissErrorMsg.value = ''
+  dismissingJobIds.value = new Set(dismissingJobIds.value).add(jobId)
+
+  // Optimistic: remove immediately to avoid "blink + return" UX
+  const prev = newJobs.value
+  newJobs.value = newJobs.value.filter((j) => j.jobId !== jobId)
+  try {
+    await tpStore.dismissJob(jobId)
+  } catch (e: any) {
+    // Revert on failure
+    newJobs.value = prev
+    dismissErrorMsg.value = e?.message || 'Ne mogu da odbijem posao. Pokušajte ponovo.'
+  } finally {
+    const next = new Set(dismissingJobIds.value)
+    next.delete(jobId)
+    dismissingJobIds.value = next
+  }
 }
 
 function onAccepted(job: any) {
