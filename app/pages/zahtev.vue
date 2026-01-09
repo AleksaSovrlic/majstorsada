@@ -1,37 +1,82 @@
 <template>
   <div class="min-h-screen flex items-start justify-center px-4 py-8">
     <div class="w-full max-w-xl bg-white rounded-xl shadow p-6">
-      <h1 class="text-2xl font-semibold text-gray-900 text-center">Novi zahtev</h1>
-      <p class="text-gray-600 text-center mt-1">Opišite problem i pošaljite zahtev majstorima.</p>
+      <h1 class="text-2xl font-bold text-[#05243a] text-center">Hajde da rešimo kvar.</h1>
+      <p class="mt-1 text-gray-600 text-center">
+        Izaberite kategoriju i opišite problem. Majstori su spremni.
+      </p>
 
-      <form class="mt-6 space-y-5" @submit.prevent="submit">
+      <form class="mt-5 space-y-4" @submit.prevent="submit">
         <div>
           <label class="block text-sm text-gray-700 mb-1">Vaš e-mail</label>
-          <input :value="userEmail" type="email" readonly class="w-full rounded-md border border-gray-200 bg-white/60 backdrop-blur-sm px-3 py-2 text-gray-700" />
+          <input
+            :value="userEmail"
+            type="email"
+            readonly
+            class="w-full bg-slate-50 border-0 rounded-xl px-4 py-3 text-gray-700"
+          />
         </div>
         <div>
-          <label class="block text-sm text-gray-700 mb-1">Potreban mi je:</label>
-          <select v-model="specializationRequired" required class="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <option value="">Izaberite tip majstora</option>
-            <option value="vodoinstalater">Vodoinstalater</option>
-            <option value="električar">Električar</option>
-            <option value="bravar">Bravar</option>
-          </select>
+          <label class="block text-sm text-gray-700 mb-3">Potreban mi je:</label>
+          <div class="grid grid-cols-3 gap-2 sm:gap-3">
+            <button
+              v-for="spec in specializationOptions"
+              :key="spec.value"
+              type="button"
+              :class="[
+                'rounded-xl border px-2 py-3 sm:px-3 sm:py-4 text-center transition-colors',
+                specializationRequired === spec.value
+                  ? 'bg-blue-50 border-2 border-[#1186dc] text-[#1186dc]'
+                  : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300'
+              ]"
+              @click="specializationRequired = spec.value"
+            >
+              <div
+                class="mx-auto flex h-9 w-9 items-center justify-center rounded-lg"
+                :class="specializationRequired === spec.value ? 'bg-[#1186dc]/10' : spec.iconBgClass"
+              >
+                <span
+                  class="h-6 w-6"
+                  :class="specializationRequired === spec.value ? 'text-[#1186dc]' : spec.iconClass"
+                  v-html="spec.icon"
+                  aria-hidden="true"
+                ></span>
+              </div>
+              <div class="mt-2 text-xs sm:text-sm font-medium leading-tight">{{ spec.label }}</div>
+            </button>
+          </div>
         </div>
         <div>
           <label class="block text-sm text-gray-700 mb-1">Kratak opis problema</label>
-          <textarea v-model="problemDescription" rows="6" required class="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Npr: curi voda iz slavine, ventil ne zatvara..." />
+          <textarea
+            v-model="problemDescription"
+            rows="4"
+            required
+            class="w-full bg-slate-50 border-0 focus:ring-2 focus:ring-[#1186dc] rounded-xl p-3 sm:p-4"
+            placeholder="Npr: curi voda iz slavine, ventil ne zatvara..."
+          />
         </div>
         <div>
           <label class="block text-sm text-gray-700 mb-1">Adresa</label>
-          <AppLocationInput v-model="addressText" v-model:selected="selectedLocation" placeholder="Počnite da kucate i izaberite iz liste" />
+          <AppLocationInput
+            v-model="addressText"
+            v-model:selected="selectedLocation"
+            placeholder="Počnite da kucate i izaberite iz liste"
+            :inputClass="'w-full bg-slate-50 border-0 focus:ring-2 focus:ring-[#1186dc] rounded-xl p-3 sm:p-4'"
+          />
           <p v-if="addressText && !selectedLocation" class="mt-1 text-sm text-red-600">
             Morate izabrati adresu iz liste kako bismo dobili tačne koordinate.
           </p>
         </div>
         <div>
           <label class="block text-sm text-gray-700 mb-1">Kontakt telefon</label>
-          <input v-model="contactPhone" type="tel" required class="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="06x xxx xxxx" />
+          <input
+            v-model="contactPhone"
+            type="tel"
+            required
+            class="w-full bg-slate-50 border-0 focus:ring-2 focus:ring-[#1186dc] rounded-xl p-3 sm:p-4"
+            placeholder="06x xxx xxxx"
+          />
           <p class="text-sm mt-1" :class="phoneValid ? 'text-green-700' : 'text-red-600'">
             {{ phoneValid ? 'Broj telefona je validan.' : 'Unesite ispravan broj telefona.' }}
           </p>
@@ -39,7 +84,6 @@
         <div>
           <label class="block text-sm text-gray-700 mb-1">Slike kvara (opciono, max 3)</label>
           <input type="file" accept="image/*" multiple @change="onFiles" class="w-full text-sm text-gray-600" />
-          <p class="mt-1 text-xs text-gray-500">Slike se automatski kompresuju (max 1280px, kvalitet 0.8) pre slanja.</p>
 
           <div v-if="selectedImages.length > 0" class="mt-3 grid grid-cols-3 gap-2">
             <div v-for="(img, idx) in selectedImages" :key="img.previewUrl" class="relative">
@@ -64,13 +108,18 @@
           </div>
         </div>
 
-        <button
-          type="submit"
-          :disabled="submitting || !phoneValid || !specializationRequired || !selectedLocation"
-          class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-3 rounded-lg shadow active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed"
-        >
-          {{ submitting ? 'Slanje...' : '[ Pošalji Zahtev ]' }}
-        </button>
+        <div class="sticky bottom-0 -mx-6 px-6 py-3 bg-white/90 backdrop-blur border-t border-slate-100 md:static md:mx-0 md:px-0 md:py-0 md:bg-transparent md:backdrop-blur-0 md:border-0">
+          <button
+            type="submit"
+            :disabled="submitting || !phoneValid || !specializationRequired || !selectedLocation"
+            class="w-full bg-[#1186dc] text-white font-bold py-4 md:py-3 rounded-xl shadow-lg md:shadow-md hover:bg-[#0f78c3] active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed transition-all inline-flex items-center justify-center gap-2"
+          >
+            <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+              <path d="M11 5l7 7-7 7M4 12h14" />
+            </svg>
+            {{ submitting ? 'Slanje...' : 'Pronađi Majstora' }}
+          </button>
+        </div>
         <button
           v-if="createdJobId"
           type="button"
@@ -125,6 +174,49 @@ const e164Phone = computed(() => {
   const parsed = parsePhoneNumberFromString(contactPhone.value, 'RS')
   return parsed && parsed.isValid() ? parsed.number : ''
 })
+
+const specializationOptions = [
+  {
+    value: 'vodoinstalater',
+    label: 'Vodoinstalater',
+    iconClass: 'text-sky-600',
+    iconBgClass: 'bg-sky-50',
+    // Faucet (two-tone)
+    icon: `<svg viewBox="0 0 24 24" fill="currentColor" fill-opacity="0.12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M5 10h6" />
+      <path d="M8 10V7a2 2 0 0 1 2-2h1" />
+      <path d="M12 5h4" />
+      <path d="M16 5v3a2 2 0 0 1-2 2h-3" />
+      <path d="M11 10v4h4v-2h4v-2" />
+      <path d="M19 12v-2a2 2 0 0 0-2-2h-2" />
+      <path d="M19 18c0 1.1-.9 2-2 2s-2-.9-2-2c0-1.5 2-3.5 2-3.5S19 16.5 19 18z" />
+    </svg>`
+  },
+  {
+    value: 'električar',
+    label: 'Električar',
+    iconClass: 'text-amber-500',
+    iconBgClass: 'bg-amber-50',
+    // Bulb (two-tone)
+    icon: `<svg viewBox="0 0 24 24" fill="currentColor" fill-opacity="0.12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M9 18h6" />
+      <path d="M10 22h4" />
+      <path d="M12 2a7 7 0 0 0-4 12c.7.6 1 1.1 1 2h6c0-.9.3-1.4 1-2a7 7 0 0 0-4-12z" />
+    </svg>`
+  },
+  {
+    value: 'bravar',
+    label: 'Bravar',
+    iconClass: 'text-slate-600',
+    iconBgClass: 'bg-slate-50',
+    // Key (two-tone)
+    icon: `<svg viewBox="0 0 24 24" fill="currentColor" fill-opacity="0.12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M7 14a4 4 0 1 1 3.7-5.5" />
+      <path d="M10.7 8.5L22 8v4l-3 1v2l-2 1v-2l-2 1" />
+      <path d="M7 14l-2 2" />
+    </svg>`
+  }
+]
 
 const MAX_IMAGES = 3
 

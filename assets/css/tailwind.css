@@ -2,5 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Global app surface (moved from app/app.vue to avoid SSR hydration mismatches) */
+html, body {
+  min-height: 100%;
+}
+
+body {
+  @apply min-h-screen bg-gradient-to-b from-slate-50 via-blue-50 to-blue-100;
+}
+
+#__nuxt {
+  min-height: 100svh;
+}
+
 
 
