@@ -1,4 +1,4 @@
-# Nuxt dev/build outputs
+# --- Nuxt dev/build outputs ---
 .output
 .data
 .nuxt
@@ -6,19 +6,37 @@
 .cache
 dist
 
-# Node dependencies
+# --- Dependencies ---
 node_modules
 
-# Logs
+# --- Logs (Prosireno da uhvati i Firebase logove) ---
 logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
 
-# Misc
-.DS_Store
-.fleet
-.idea
+# --- Firebase Cache (OVO RESAVA TVOJ GLAVNI PROBLEM) ---
+.firebase/
 
-# Local env files
+# --- Environment Variables ---
 .env
 .env.*
 !.env.example
+
+# --- SECURITY KEYS (NAJVAZNIJE - Zastita od hakera) ---
+# Ovo blokira onaj serviceAccountKey.json u functions folderu
+functions/.keys/
+serviceAccountKey.json
+*.pem
+*.p12
+
+# --- System & Misc ---
+.DS_Store
+.fleet
+.idea
+.vscode/
+Thumbs.db
