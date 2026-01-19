@@ -135,9 +135,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onBeforeUnmount } from 'vue'
+import { ref, computed, onBeforeUnmount, onMounted } from 'vue'
 import { useJobStore } from '@/stores/job'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { parsePhoneNumberFromString } from 'libphonenumber-js'
 import AppLocationInput, { type LocationSelection } from '@/components/AppLocationInput.vue'
@@ -147,6 +147,7 @@ definePageMeta({
   middleware: ['client-auth']
 })
 
+const route = useRoute()
 const router = useRouter()
 const jobStore = useJobStore()
 const authStore = useAuthStore()
@@ -173,6 +174,27 @@ const phoneValid = computed(() => {
 const e164Phone = computed(() => {
   const parsed = parsePhoneNumberFromString(contactPhone.value, 'RS')
   return parsed && parsed.isValid() ? parsed.number : ''
+})
+
+function mapTipToSpecialization(tip: string): string | null {
+  const normalized = tip.trim().toLowerCase()
+  if (!normalized) return null
+
+  // Support both URL-safe slugs and any legacy/hand-typed values.
+  if (normalized === 'vodoinstalater') return 'vodoinstalater'
+  if (normalized === 'bravar') return 'bravar'
+  if (normalized === 'elektricar' || normalized === 'električar') return 'električar'
+
+  return null
+}
+
+onMounted(() => {
+  // Deep-link support: `/zahtev?tip=...` prefills specialization (without changing submit logic).
+  if (specializationRequired.value) return
+  const tip = route.query.tip
+  if (typeof tip !== 'string') return
+  const mapped = mapTipToSpecialization(tip)
+  if (mapped) specializationRequired.value = mapped
 })
 
 const specializationOptions = [
