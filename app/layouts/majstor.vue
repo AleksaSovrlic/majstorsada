@@ -1,7 +1,7 @@
 <template>
-  <div class="min-h-screen">
-    <header class="sticky top-0 z-10 bg-white border-b border-gray-200">
-      <div class="max-w-xl mx-auto px-4 py-3 flex items-center justify-between">
+  <div class="min-h-screen bg-gradient-to-b from-slate-50 via-blue-50 to-blue-100">
+    <header class="sticky top-0 z-20 bg-white/90 backdrop-blur-md shadow-sm shadow-black/5 ring-1 ring-black/5">
+      <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
         <NuxtLink to="/majstor/dashboard" class="inline-flex items-center" aria-label="MajstorSada">
           <img
             src="/logo/logo-32.png"
@@ -17,8 +17,8 @@
         <div class="flex items-center gap-2">
           <NuxtLink
             to="/majstor/recenzije"
-            class="h-10 w-10 inline-flex items-center justify-center rounded-md border border-gray-200 text-gray-700 hover:bg-gray-50"
-            :class="route.path.startsWith('/majstor/recenzije') ? 'bg-gray-100' : ''"
+            class="h-10 w-10 inline-flex items-center justify-center rounded-full ring-1 ring-black/10 text-slate-600 hover:text-brand-navy hover:bg-white transition-transform active:scale-[0.99]"
+            :class="route.path.startsWith('/majstor/recenzije') ? 'bg-white text-brand-navy ring-black/15' : 'bg-white/60'"
             aria-label="Recenzije"
             title="Recenzije"
           >
@@ -28,8 +28,8 @@
           </NuxtLink>
           <NuxtLink
             to="/majstor/podesavanja"
-            class="h-10 w-10 inline-flex items-center justify-center rounded-md border border-gray-200 text-gray-700 hover:bg-gray-50"
-            :class="route.path.startsWith('/majstor/podesavanja') ? 'bg-gray-100' : ''"
+            class="h-10 w-10 inline-flex items-center justify-center rounded-full ring-1 ring-black/10 text-slate-600 hover:text-brand-navy hover:bg-white transition-transform active:scale-[0.99]"
+            :class="route.path.startsWith('/majstor/podesavanja') ? 'bg-white text-brand-navy ring-black/15' : 'bg-white/60'"
             aria-label="Podešavanja"
             title="Podešavanja"
           >
@@ -38,13 +38,13 @@
             </svg>
           </NuxtLink>
           <button
-            class="text-sm px-3 py-2 rounded-md bg-gray-200 text-gray-800 hover:bg-gray-300 active:scale-[0.99]"
+            class="inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold text-slate-600 hover:text-rose-700 hover:bg-rose-50/60 transition-transform active:scale-[0.99]"
             @click="onSignOut"
           >Odjava</button>
         </div>
       </div>
     </header>
-    <main class="max-w-xl mx-auto px-4 py-4">
+    <main class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
       <slot />
     </main>
   </div>

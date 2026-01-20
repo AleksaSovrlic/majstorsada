@@ -1,65 +1,230 @@
 <template>
   <div class="space-y-6">
+    <!-- Top overview -->
+    <div class="text-center">
+      <h1 class="text-2xl sm:text-3xl font-bold text-brand-navy tracking-tight">
+        Majstorski komandni centar
+      </h1>
+      <p class="mt-1 text-slate-600">
+        Novi poslovi i status se ažuriraju u realnom vremenu.
+      </p>
+    </div>
+
     <ClientOnly>
       <NotificationsBanner />
     </ClientOnly>
-    <div class="grid md:grid-cols-2 gap-4">
-      <div class="bg-white rounded-xl shadow p-6">
-        <div class="flex items-center justify-between">
-          <h3 class="text-lg font-semibold text-gray-900">Dostupnost</h3>
-        </div>
-        <div class="mt-3">
-          <AvailabilityToggle />
-        </div>
-      </div>
-      <div class="bg-white rounded-xl shadow p-6">
-        <div class="flex items-center justify-between">
-          <h3 class="text-lg font-semibold text-gray-900">Žetoni</h3>
-        </div>
-        <div class="mt-3">
-          <TokenBalance />
-        </div>
-      </div>
-    </div>
 
-    <div class="bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-lg p-3">
-      Potrebno Vam je još žetona? Kontaktirajte administratora na broj: 06X/XXX-XXXX
-    </div>
-
-    <section>
-      <h2 class="text-xl font-bold text-gray-900">Novi poslovi</h2>
-      <div class="pt-2 space-y-3">
-        <NewJobCard v-for="j in newJobs" :key="j.jobId" :job="j" @dismiss="onDismiss(j.jobId)" @accepted="onAccepted" />
-        <p v-if="dismissErrorMsg" class="text-sm text-red-600">{{ dismissErrorMsg }}</p>
-        <div v-if="newJobs.length === 0" class="text-sm text-gray-500 text-center py-6">Nema novih poslova trenutno.</div>
-      </div>
+    <!-- HERO GRID -->
+    <section aria-label="Pregled" class="grid gap-4 lg:grid-cols-2">
+      <AvailabilityToggle />
+      <TokenBalance />
     </section>
 
-    <section>
-      <h2 class="text-xl font-bold text-gray-900">Aktivni poslovi</h2>
-      <div class="pt-2 space-y-3">
-        <div v-for="j in activeJobs" :key="j.jobId" class="bg-white rounded-xl shadow p-6 space-y-2">
-          <div class="text-lg font-semibold text-gray-900">{{ j.problemDescription }}</div>
-          <div class="text-sm text-gray-600">{{ j.location }} · {{ j.specializationRequired }}</div>
-          <div class="text-sm text-gray-800 mt-1">Kontakt: {{ j.contactPhone }}</div>
-          <div class="pt-2 flex items-center gap-2">
-            <button class="px-4 py-2 rounded-lg bg-blue-600 text-white font-medium shadow-sm hover:bg-blue-700 active:scale-[0.99]" :disabled="finishingJobIds.has(j.jobId)" @click="onFinish(j.jobId)">
-              {{ finishingJobIds.has(j.jobId) ? 'Završavanje...' : 'Završi Posao' }}
-            </button>
+    <!-- JOBS TABS -->
+    <section aria-labelledby="jobs-title" class="rounded-[2rem] bg-white/70 backdrop-blur ring-1 ring-black/5 shadow-sm p-4 sm:p-6">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h2 id="jobs-title" class="text-lg sm:text-xl font-extrabold text-brand-navy tracking-tight">
+            Poslovi
+          </h2>
+          <p class="mt-1 text-sm text-slate-600">
+            Organizovano po standardu modernih SaaS panela.
+          </p>
+        </div>
+      </div>
+
+      <div class="mt-4">
+        <div
+          role="tablist"
+          aria-label="Poslovi"
+          class="grid grid-cols-3 rounded-2xl bg-slate-100/80 p-1 ring-1 ring-black/5"
+        >
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="activeTab === 'new' ? 'true' : 'false'"
+            class="inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-blue/15"
+            :class="activeTab === 'new' ? 'bg-white text-brand-navy shadow-sm ring-1 ring-black/5' : 'text-slate-600 hover:text-brand-navy'"
+            @click="activeTab = 'new'"
+          >
+            Novi
+            <span
+              v-if="newJobs.length > 0"
+              class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full bg-brand-blue text-white text-xs font-bold tabular-nums"
+              aria-label="Broj novih poslova"
+            >
+              {{ newJobs.length }}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="activeTab === 'active' ? 'true' : 'false'"
+            class="inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-blue/15"
+            :class="activeTab === 'active' ? 'bg-white text-brand-navy shadow-sm ring-1 ring-black/5' : 'text-slate-600 hover:text-brand-navy'"
+            @click="activeTab = 'active'"
+          >
+            Aktivni
+            <span
+              v-if="activeJobs.length > 0"
+              class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full bg-brand-blue text-white text-xs font-bold tabular-nums"
+              aria-label="Broj aktivnih poslova"
+            >
+              {{ activeJobs.length }}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="activeTab === 'history' ? 'true' : 'false'"
+            class="inline-flex items-center justify-center rounded-xl px-3 py-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-blue/15"
+            :class="activeTab === 'history' ? 'bg-white text-brand-navy shadow-sm ring-1 ring-black/5' : 'text-slate-600 hover:text-brand-navy'"
+            @click="activeTab = 'history'"
+          >
+            Istorija
+          </button>
+        </div>
+      </div>
+
+      <div class="mt-5">
+        <!-- TAB: NEW -->
+        <div v-if="activeTab === 'new'" role="tabpanel" class="space-y-3">
+          <template v-if="newJobs.length > 0">
+            <NewJobCard
+              v-for="j in newJobs"
+              :key="j.jobId"
+              :job="j"
+              @dismiss="onDismiss(j.jobId)"
+              @accepted="onAccepted"
+            />
+            <div v-if="dismissErrorMsg" class="rounded-xl bg-rose-50 border border-rose-200 px-4 py-3 text-rose-800 text-sm">
+              {{ dismissErrorMsg }}
+            </div>
+          </template>
+
+          <div v-else class="rounded-[2rem] bg-white/60 backdrop-blur ring-1 ring-black/5 p-8 text-center">
+            <div class="mx-auto mb-4 h-12 w-12 rounded-2xl bg-brand-blue/10 flex items-center justify-center" aria-hidden="true">
+              <svg viewBox="0 0 24 24" class="h-6 w-6 text-brand-blue" aria-hidden="true">
+                <path fill="currentColor" d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2m1 15h-2v-2h2zm0-4h-2V7h2z" />
+              </svg>
+            </div>
+            <h3 class="text-xl font-bold text-brand-navy">Nema novih poslova</h3>
+            <p class="mt-2 text-slate-600">
+              Ostanite <span class="font-semibold">dostupni</span> — čim stigne novi posao, pojaviće se ovde.
+            </p>
           </div>
         </div>
-        <div v-if="activeJobs.length === 0" class="text-sm text-gray-500 text-center py-6">Nema aktivnih poslova.</div>
-      </div>
-    </section>
 
-    <section>
-      <h2 class="text-xl font-bold text-gray-900">Završeni poslovi</h2>
-      <div class="pt-2 space-y-3">
-        <div v-for="j in completedJobs" :key="j.jobId" class="bg-white rounded-xl shadow p-6 space-y-2">
-          <div class="text-lg font-semibold text-gray-900">{{ j.problemDescription }}</div>
-          <div class="text-sm text-gray-600">{{ j.location }} · {{ j.specializationRequired }}</div>
+        <!-- TAB: ACTIVE -->
+        <div v-else-if="activeTab === 'active'" role="tabpanel" class="space-y-3">
+          <div v-if="errorMsg" class="rounded-xl bg-rose-50 border border-rose-200 px-4 py-3 text-rose-800 text-sm">
+            {{ errorMsg }}
+          </div>
+          <div v-if="successMsg" class="rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-emerald-800 text-sm">
+            {{ successMsg }}
+          </div>
+
+          <template v-if="activeJobs.length > 0">
+            <div
+              v-for="j in activeJobs"
+              :key="j.jobId"
+              class="bg-white/80 backdrop-blur rounded-[2rem] ring-1 ring-black/5 shadow-sm p-5 sm:p-6"
+            >
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="text-lg font-extrabold text-brand-navy tracking-tight">
+                    {{ j.problemDescription }}
+                  </div>
+                  <div class="mt-1 text-sm text-slate-600">
+                    {{ j.specializationRequired }}
+                  </div>
+                </div>
+                <span class="shrink-0 inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold bg-brand-blue/10 text-brand-blue ring-1 ring-brand-blue/20">
+                  Aktivno
+                </span>
+              </div>
+
+              <div class="mt-4 grid gap-3 sm:grid-cols-2 text-sm">
+                <div class="rounded-2xl bg-slate-50 p-4 ring-1 ring-black/5">
+                  <div class="text-xs text-slate-500">Lokacija</div>
+                  <div class="font-semibold text-brand-navy">
+                    {{ j.location || '—' }}
+                  </div>
+                </div>
+                <div class="rounded-2xl bg-slate-50 p-4 ring-1 ring-black/5">
+                  <div class="text-xs text-slate-500">Kontakt</div>
+                  <div class="font-semibold text-brand-navy">
+                    {{ j.contactPhone || '—' }}
+                  </div>
+                </div>
+              </div>
+
+              <div class="mt-4 flex items-center gap-2">
+                <button
+                  class="inline-flex items-center justify-center rounded-xl bg-brand-blue text-white px-5 py-3 text-sm font-bold shadow-lg shadow-blue-500/20 hover:bg-brand-blue-dark transition-transform active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed"
+                  :disabled="finishingJobIds.has(j.jobId)"
+                  @click="onFinish(j.jobId)"
+                >
+                  {{ finishingJobIds.has(j.jobId) ? 'Završavanje…' : 'Završi posao' }}
+                </button>
+              </div>
+            </div>
+          </template>
+
+          <div v-else class="rounded-[2rem] bg-white/60 backdrop-blur ring-1 ring-black/5 p-8 text-center">
+            <div class="mx-auto mb-4 h-12 w-12 rounded-2xl bg-brand-blue/10 flex items-center justify-center" aria-hidden="true">
+              <svg viewBox="0 0 24 24" class="h-6 w-6 text-brand-blue" aria-hidden="true">
+                <path fill="currentColor" d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2m0 2v16h10V4zm2 3h6v2H9zm0 4h6v2H9z" />
+              </svg>
+            </div>
+            <h3 class="text-xl font-bold text-brand-navy">Nema aktivnih poslova</h3>
+            <p class="mt-2 text-slate-600">
+              Kada prihvatite posao iz taba <span class="font-semibold">Novi</span>, pojaviće se ovde.
+            </p>
+          </div>
         </div>
-        <div v-if="completedJobs.length === 0" class="text-sm text-gray-500 text-center py-6">Nema završenih poslova.</div>
+
+        <!-- TAB: HISTORY -->
+        <div v-else role="tabpanel" class="space-y-3">
+          <template v-if="completedJobs.length > 0">
+            <div
+              v-for="j in completedJobs"
+              :key="j.jobId"
+              class="bg-white/80 backdrop-blur rounded-[2rem] ring-1 ring-black/5 shadow-sm p-5 sm:p-6"
+            >
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="text-lg font-extrabold text-brand-navy tracking-tight">
+                    {{ j.problemDescription }}
+                  </div>
+                  <div class="mt-1 text-sm text-slate-600">
+                    {{ j.specializationRequired }}
+                  </div>
+                </div>
+                <span class="shrink-0 inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200">
+                  Završeno
+                </span>
+              </div>
+              <div v-if="j.location" class="mt-3 text-sm text-slate-600">
+                {{ j.location }}
+              </div>
+            </div>
+          </template>
+
+          <div v-else class="rounded-[2rem] bg-white/60 backdrop-blur ring-1 ring-black/5 p-8 text-center">
+            <div class="mx-auto mb-4 h-12 w-12 rounded-2xl bg-brand-blue/10 flex items-center justify-center" aria-hidden="true">
+              <svg viewBox="0 0 24 24" class="h-6 w-6 text-brand-blue" aria-hidden="true">
+                <path fill="currentColor" d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2m5 8H7V8h10zm0 4H7v-2h10z" />
+              </svg>
+            </div>
+            <h3 class="text-xl font-bold text-brand-navy">Još nema istorije</h3>
+            <p class="mt-2 text-slate-600">
+              Završeni poslovi će se automatski pojaviti ovde.
+            </p>
+          </div>
+        </div>
       </div>
     </section>
   </div>
@@ -78,6 +243,12 @@ import { DEFAULT_CITY } from '@/utils/cities'
 
 definePageMeta({ layout: 'majstor', middleware: 'auth' })
 
+useSeoMeta({
+  title: 'Majstor Dashboard — MajstorSada',
+  description: 'Majstorski panel za nove poslove, aktivne poslove i istoriju.',
+  robots: 'noindex, nofollow'
+})
+
 const auth = useAuthStore()
 const tpStore = useTradespersonStore()
 const newJobs = ref<Array<any>>([])
@@ -91,6 +262,9 @@ const errorMsg = ref('')
 const successMsg = ref('')
 const dismissingJobIds = ref<Set<string>>(new Set())
 const dismissErrorMsg = ref('')
+
+type DashboardTab = 'new' | 'active' | 'history'
+const activeTab = ref<DashboardTab>('new')
 
 function startJobsFeed() {
   stopPendingFeed()
