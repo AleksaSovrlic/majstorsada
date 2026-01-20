@@ -1,59 +1,143 @@
 <template>
-  <div class="min-h-screen flex items-center justify-center px-4">
-    <div class="w-full max-w-sm bg-white rounded-xl shadow p-6">
-      <div class="mb-6 text-center">
-        <div class="text-2xl font-bold text-gray-900">MajstorSada</div>
-        <div class="text-sm text-gray-500 mt-1">Registracija za majstore</div>
+  <main class="mx-auto w-full max-w-5xl px-4 sm:px-6 lg:px-8">
+    <section
+      aria-labelledby="majstor-register-title"
+      class="min-h-[100svh] flex items-center justify-center py-10"
+    >
+      <div class="w-full max-w-md">
+        <div class="bg-white rounded-2xl shadow-xl ring-1 ring-black/5 p-6 sm:p-8">
+          <div class="text-center">
+            <div class="mx-auto mb-4 h-12 w-12 rounded-2xl bg-brand-blue/10 flex items-center justify-center">
+              <svg viewBox="0 0 24 24" class="h-6 w-6 text-brand-blue" aria-hidden="true">
+                <path
+                  fill="currentColor"
+                  d="M15 12a4 4 0 1 0-4-4a4 4 0 0 0 4 4m0 2c-4.42 0-8 2-8 4.5V21h16v-2.5C23 16 19.42 14 15 14M6 10V7a3 3 0 0 1 6 0v3h2V7a5 5 0 0 0-10 0v3z"
+                />
+              </svg>
+            </div>
+
+            <h1 id="majstor-register-title" class="text-2xl sm:text-3xl font-bold text-brand-navy tracking-tight">
+              Registracija za majstore
+            </h1>
+            <p class="mt-3 text-gray-600 text-sm sm:text-base leading-relaxed">
+              Napravite nalog i odaberite specijalizaciju — spremni ste za nove zahteve.
+            </p>
+          </div>
+
+          <form class="mt-6 space-y-4" @submit.prevent="submit">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Ime i prezime</label>
+              <input
+                v-model="displayName"
+                type="text"
+                required
+                autocomplete="name"
+                class="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-base placeholder:text-gray-400 shadow-sm focus:outline-none focus:ring-4 focus:ring-brand-blue/15 focus:border-brand-blue"
+                placeholder="Pera Perić"
+              />
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">E-mail</label>
+              <input
+                v-model="email"
+                type="email"
+                required
+                autocomplete="email"
+                inputmode="email"
+                class="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-base placeholder:text-gray-400 shadow-sm focus:outline-none focus:ring-4 focus:ring-brand-blue/15 focus:border-brand-blue"
+                placeholder="vasa.adresa@primer.com"
+              />
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Kontakt telefon</label>
+              <input
+                v-model="phone"
+                type="tel"
+                required
+                autocomplete="tel"
+                inputmode="tel"
+                class="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-base placeholder:text-gray-400 shadow-sm focus:outline-none focus:ring-4 focus:ring-brand-blue/15 focus:border-brand-blue"
+                placeholder="06x xxx xxxx"
+              />
+              <p class="mt-2 text-xs font-medium" :class="phoneValid ? 'text-emerald-700' : 'text-red-600'">
+                {{ phoneValid ? 'Broj telefona je validan.' : 'Unesite ispravan broj telefona.' }}
+              </p>
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Lozinka</label>
+              <input
+                v-model="password"
+                type="password"
+                minlength="8"
+                required
+                autocomplete="new-password"
+                class="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-base placeholder:text-gray-400 shadow-sm focus:outline-none focus:ring-4 focus:ring-brand-blue/15 focus:border-brand-blue"
+                placeholder="min 8 karaktera"
+              />
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Specijalizacija</label>
+              <select
+                v-model="specialization"
+                required
+                class="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-base shadow-sm focus:outline-none focus:ring-4 focus:ring-brand-blue/15 focus:border-brand-blue"
+              >
+                <option value="">Izaberite</option>
+                <option value="vodoinstalater">Vodoinstalater</option>
+                <option value="električar">Električar</option>
+                <option value="bravar">Bravar</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Grad</label>
+              <select
+                v-model="city"
+                required
+                class="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-base shadow-sm focus:outline-none focus:ring-4 focus:ring-brand-blue/15 focus:border-brand-blue"
+              >
+                <option v-for="c in SUPPORTED_CITIES" :key="c" :value="c">{{ c }}</option>
+              </select>
+            </div>
+
+            <button
+              type="submit"
+              :disabled="loading || !phoneValid"
+              class="w-full h-12 sm:h-14 inline-flex items-center justify-center rounded-xl bg-brand-blue text-white font-bold text-base sm:text-lg shadow-lg shadow-blue-500/25 hover:bg-brand-blue-dark active:scale-[0.99] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {{ loading ? 'Kreiranje naloga…' : 'Registruj se' }}
+            </button>
+
+            <div v-if="errorMsg" class="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-red-700 text-sm">
+              {{ errorMsg }}
+            </div>
+            <div v-if="successMsg" class="rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-emerald-800 text-sm">
+              {{ successMsg }}
+            </div>
+          </form>
+
+          <div class="mt-6 pt-4 border-t border-gray-100 text-sm text-center">
+            <NuxtLink
+              to="/majstor/login"
+              class="inline-flex items-center justify-center font-semibold text-brand-navy hover:text-brand-blue transition-colors"
+            >
+              Već imate nalog? Prijavite se
+            </NuxtLink>
+          </div>
+
+          <div class="mt-4 text-center">
+            <NuxtLink to="/" class="text-sm font-semibold text-brand-navy hover:text-brand-blue transition-colors">
+              Nazad na početnu stranicu
+            </NuxtLink>
+          </div>
+        </div>
       </div>
-
-      <form @submit.prevent="submit" class="space-y-4">
-        <div>
-          <label class="block text-sm text-gray-700 mb-1">Ime i prezime</label>
-          <input v-model="displayName" type="text" required class="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Pera Perić" />
-        </div>
-        <div>
-          <label class="block text-sm text-gray-700 mb-1">Email</label>
-          <input v-model="email" type="email" required class="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="vas@email.com" />
-        </div>
-        <div>
-          <label class="block text-sm text-gray-700 mb-1">Kontakt telefon</label>
-          <input v-model="phone" type="tel" required class="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="06x xxx xxxx" />
-          <p class="text-sm mt-1" :class="phoneValid ? 'text-green-700' : 'text-red-600'">
-            {{ phoneValid ? 'Broj telefona je validan.' : 'Unesite ispravan broj telefona.' }}
-          </p>
-        </div>
-        <div>
-          <label class="block text-sm text-gray-700 mb-1">Lozinka</label>
-          <input v-model="password" type="password" minlength="8" required class="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="min 8 karaktera" />
-        </div>
-        <div>
-          <label class="block text-sm text-gray-700 mb-1">Specijalizacija</label>
-          <select v-model="specialization" required class="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <option value="">Izaberite</option>
-            <option value="vodoinstalater">Vodoinstalater</option>
-            <option value="električar">Električar</option>
-            <option value="bravar">Bravar</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-sm text-gray-700 mb-1">Grad</label>
-          <select v-model="city" required class="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <option v-for="c in SUPPORTED_CITIES" :key="c" :value="c">{{ c }}</option>
-          </select>
-        </div>
-
-        <button type="submit" :disabled="loading || !phoneValid" class="w-full rounded-md bg-blue-600 text-white py-2.5 font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.99]">
-          {{ loading ? 'Kreiranje naloga...' : 'Registruj se' }}
-        </button>
-        <p v-if="errorMsg" class="text-red-600 text-sm">{{ errorMsg }}</p>
-        <p v-if="successMsg" class="text-green-600 text-sm">{{ successMsg }}</p>
-      </form>
-
-      <div class="mt-4 text-sm text-center">
-        <NuxtLink to="/majstor/login" class="underline">Već imate nalog? Prijavite se</NuxtLink>
-      </div>
-    </div>
-  </div>
+    </section>
+  </main>
 </template>
 
 <script setup lang="ts">
@@ -66,6 +150,12 @@ import { parsePhoneNumberFromString } from 'libphonenumber-js'
 import { DEFAULT_CITY, SUPPORTED_CITIES } from '@/utils/cities'
 
 definePageMeta({ layout: false })
+
+useSeoMeta({
+  title: 'Registracija za majstore — MajstorSada',
+  description: 'Registrujte se kao majstor i počnite da primate nove zahteve.',
+  robots: 'noindex, nofollow'
+})
 
 const router = useRouter()
 const authStore = useAuthStore()
