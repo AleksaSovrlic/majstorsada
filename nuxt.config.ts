@@ -40,6 +40,10 @@ export default defineNuxtConfig({
       ],
       meta: [
         { name: 'theme-color', content: '#f8fafc' },
+        // Modern (Chrome/Android legacy) web-app capability hint.
+        // Keeps console clean when `apple-mobile-web-app-capable` is present.
+        { name: 'mobile-web-app-capable', content: 'yes' },
+        // iOS legacy support (still required on some iOS versions for standalone mode).
         { name: 'apple-mobile-web-app-capable', content: 'yes' },
         { name: 'apple-mobile-web-app-status-bar-style', content: 'default' }
       ]
