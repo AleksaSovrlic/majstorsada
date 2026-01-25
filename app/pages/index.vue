@@ -190,7 +190,7 @@ import { computed, ref } from 'vue'
 definePageMeta({ layout: 'home' })
 
 useSeoMeta({
-  title: 'MajstorSada — Brza pomoć kada zatreba',
+  title: 'Hitne Intervencije: Stižemo za 30 min',
   description: 'Izaberite kategoriju i pošaljite zahtev za minut. Provereni majstori su dostupni odmah.',
   ogTitle: 'MajstorSada',
   ogDescription: 'Izaberite kategoriju i pošaljite zahtev za minut. Provereni majstori su dostupni odmah.'

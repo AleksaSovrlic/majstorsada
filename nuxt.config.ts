@@ -67,6 +67,7 @@ export default defineNuxtConfig({
           name: 'description',
           content: 'Brze i pouzdane usluge majstora u vašem kraju.'
         },
+        { name: 'google-site-verification', content: 'YVa8U-X1G280zhVcp1iy13yH2jwZXVHABrPtB4jOkoM' },
         { name: 'theme-color', content: '#f8fafc' },
         // Modern (Chrome/Android legacy) web-app capability hint.
         // Keeps console clean when `apple-mobile-web-app-capable` is present.
