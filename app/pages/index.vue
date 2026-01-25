@@ -14,7 +14,7 @@
           src="/hero/city-map.webp"
           width="1632"
           height="2624"
-          alt=""
+          alt="Mapa dostupnih majstora za hitne intervencije"
           class="col-start-1 row-start-1 block w-full h-auto select-none lg:col-start-2"
           decoding="async"
           fetchpriority="high"

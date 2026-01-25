@@ -5,8 +5,23 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, watch } from 'vue'
+import { computed, onMounted, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+
+const route = useRoute()
+const runtime = useRuntimeConfig()
+const canonicalBase = computed(() => {
+  const raw = (runtime.public as any).siteUrl as string | undefined
+  return (raw || 'https://majstorsada.rs').replace(/\/+$/, '')
+})
+const canonicalHref = computed(() => `${canonicalBase.value}${route.path}`)
+
+// Global canonical to prevent host/query duplication issues.
+useHead(() => ({
+  link: [
+    { rel: 'canonical', href: canonicalHref.value, key: 'canonical' }
+  ]
+}))
 
 const auth = useAuthStore()
 
