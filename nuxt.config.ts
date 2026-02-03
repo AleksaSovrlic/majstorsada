@@ -59,8 +59,12 @@ export default defineNuxtConfig({
       titleTemplate: '%s | MajstorSada',
       link: [
         { rel: 'manifest', href: '/manifest.webmanifest' },
+        // Favicons (SERP + browsers)
+        { rel: 'icon', href: '/favicon.ico' },
+        { rel: 'icon', href: '/favicon-32x32.png', type: 'image/png', sizes: '32x32' },
         { rel: 'icon', href: '/icons/icon-192.png', type: 'image/png', sizes: '192x192' },
-        { rel: 'apple-touch-icon', href: '/icons/apple-touch-icon-180.png', sizes: '180x180' }
+        // iOS (prevents 404; PWA behavior remains driven by manifest)
+        { rel: 'apple-touch-icon', href: '/apple-touch-icon.png', sizes: '192x192' }
       ],
       meta: [
         {

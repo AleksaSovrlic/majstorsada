@@ -191,9 +191,11 @@ definePageMeta({ layout: 'home' })
 
 useSeoMeta({
   title: 'Hitne Intervencije: Stižemo za 30 min',
-  description: 'Izaberite kategoriju i pošaljite zahtev za minut. Provereni majstori su dostupni odmah.',
+  description:
+    'Majstor na vašim vratima za 30 minuta. Naš pametni sistem odmah pronalazi slobodnog stručnjaka u vašem kraju. Vodoinstalater, električar, bravar - 00-24h.',
   ogTitle: 'MajstorSada',
-  ogDescription: 'Izaberite kategoriju i pošaljite zahtev za minut. Provereni majstori su dostupni odmah.'
+  ogDescription:
+    'Majstor na vašim vratima za 30 minuta. Naš pametni sistem odmah pronalazi slobodnog stručnjaka u vašem kraju. Vodoinstalater, električar, bravar - 00-24h.'
 })
 
 type ServiceTipSlug = 'vodoinstalater' | 'elektricar' | 'bravar'
