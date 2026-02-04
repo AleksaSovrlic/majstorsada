@@ -120,6 +120,24 @@ export default defineNuxtConfig({
     '/finishLogin': { robots: false },
     '/zahtev': { robots: false },
     '/potvrda': { robots: false },
+    '/vodoinstalater': {
+      sitemap: {
+        changefreq: 'weekly',
+        priority: 0.9
+      }
+    },
+    '/elektricar': {
+      sitemap: {
+        changefreq: 'weekly',
+        priority: 0.9
+      }
+    },
+    '/bravar': {
+      sitemap: {
+        changefreq: 'weekly',
+        priority: 0.9
+      }
+    },
     '/': {
       sitemap: {
         changefreq: 'weekly',
