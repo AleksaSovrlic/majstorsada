@@ -41,6 +41,14 @@
             >
               <slot name="title" />
             </h1>
+
+            <p v-if="hasSubtitle" class="mt-4 text-sm sm:text-lg leading-relaxed text-slate-700">
+              <slot name="subtitle" />
+            </p>
+
+            <p v-if="hasTrust" class="mt-3 text-xs sm:text-sm font-semibold leading-relaxed text-brand-navy">
+              <slot name="trust" />
+            </p>
           </div>
 
           <!-- Selector Card (STRADDLE): pushed down with negative margin into the next section -->
@@ -51,43 +59,42 @@
               <!-- small handle for "sheet" feel -->
               <div class="mx-auto mb-3 h-1.5 w-12 rounded-full bg-slate-200" aria-hidden="true" />
 
-              <fieldset>
-                <legend class="sr-only">Izaberite uslugu</legend>
+              <nav aria-label="Izaberite uslugu">
                 <div class="grid grid-cols-3 gap-2">
-                  <label
+                  <NuxtLink
                     v-for="opt in serviceOptions"
                     :key="opt.slug"
-                    class="group cursor-pointer select-none rounded-2xl border px-2.5 py-3 text-center transition-colors"
+                    :to="opt.landingPath"
+                    class="group block cursor-pointer select-none rounded-2xl border px-2.5 py-3 text-center transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-blue/20"
                     :class="
-                      selectedTip === opt.slug
+                      activeTip === opt.slug
                         ? 'border-brand-blue bg-brand-blue/5'
                         : 'border-slate-200 bg-white hover:border-brand-blue/40 hover:bg-slate-50'
                     "
+                    :aria-current="activeTip === opt.slug ? 'page' : undefined"
                   >
-                    <input v-model="selectedTip" class="sr-only" type="radio" name="service" :value="opt.slug" />
-
                     <div
                       class="mx-auto flex h-10 w-10 items-center justify-center rounded-xl transition-colors"
-                      :class="selectedTip === opt.slug ? 'bg-brand-blue/10' : 'bg-slate-50 group-hover:bg-brand-blue/5'"
+                      :class="activeTip === opt.slug ? 'bg-brand-blue/10' : 'bg-slate-50 group-hover:bg-brand-blue/5'"
                       aria-hidden="true"
                     >
                       <svg viewBox="0 0 24 24" class="h-5 w-5" aria-hidden="true">
                         <path
                           fill="currentColor"
-                          :class="selectedTip === opt.slug ? 'text-brand-blue' : 'text-slate-600 group-hover:text-brand-blue'"
+                          :class="activeTip === opt.slug ? 'text-brand-blue' : 'text-slate-600 group-hover:text-brand-blue'"
                           :d="opt.iconPath"
                         />
                       </svg>
                     </div>
                     <div
                       class="mt-2 text-[11px] sm:text-sm font-semibold leading-tight"
-                      :class="selectedTip === opt.slug ? 'text-brand-blue' : 'text-slate-700'"
+                      :class="activeTip === opt.slug ? 'text-brand-blue' : 'text-slate-700'"
                     >
                       {{ opt.label }}
                     </div>
-                  </label>
+                  </NuxtLink>
                 </div>
-              </fieldset>
+              </nav>
 
               <NuxtLink
                 :to="ctaTo"
@@ -107,7 +114,7 @@
               </NuxtLink>
 
               <p class="mt-3 text-center text-xs text-slate-600">
-                Svi majstori prolaze bezbednosnu proveru. Vaši podaci nisu javni.
+                Zahtev šaljemo trenutno dostupnim proverenim majstorima. Vaši podaci nisu javno prikazani.
               </p>
             </div>
           </div>
@@ -118,40 +125,40 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, useSlots } from 'vue'
 import { serviceOptions, type ServiceTipSlug } from '@/utils/services'
 
-const props = withDefaults(
+withDefaults(
   defineProps<{
-    initialTip?: ServiceTipSlug
     titleId?: string
     sectionId?: string
     badgeText?: string
     imageAlt?: string
   }>(),
   {
-    initialTip: 'vodoinstalater',
     titleId: 'home-hero-title',
     sectionId: 'hero',
-    badgeText: 'Provereni majstori • Dostupni odmah',
+    badgeText: 'Pošaljite zahtev 24/7 • Beograd',
     imageAlt: 'Mapa dostupnih majstora za hitne intervencije'
   }
 )
 
-const selectedTip = ref<ServiceTipSlug>(props.initialTip)
+const slots = useSlots()
+const route = useRoute()
 
-watch(
-  () => props.initialTip,
-  (v) => {
-    if (v) selectedTip.value = v
-  }
-)
+const normalizedPath = computed(() => route.path.replace(/\/+$/, '') || '/')
 
-const selectedOption = computed(() => {
-  return serviceOptions.find((o) => o.slug === selectedTip.value) ?? serviceOptions[0]
+const activeOption = computed(() => {
+  return serviceOptions.find((o) => o.landingPath === normalizedPath.value) ?? null
 })
 
-const ctaText = computed(() => `Zatraži ${selectedOption.value.ctaLabel}`)
-const ctaTo = computed(() => ({ path: '/zahtev', query: { tip: selectedTip.value } }))
-</script>
+const activeTip = computed<ServiceTipSlug | null>(() => activeOption.value?.slug ?? null)
+const hasSubtitle = computed(() => typeof slots.subtitle === 'function')
+const hasTrust = computed(() => typeof slots.trust === 'function')
 
+const ctaText = computed(() => 'Pošalji zahtev')
+
+const ctaTo = computed(() => {
+  return activeOption.value ? { path: '/zahtev', query: { tip: activeOption.value.slug } } : { path: '/zahtev' }
+})
+</script>

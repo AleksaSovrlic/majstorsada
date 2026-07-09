@@ -10,7 +10,7 @@
           Kako radi
         </h2>
         <p class="mt-2 text-slate-600 text-sm sm:text-base">
-          Tri kratka koraka do rešenja – brzo, jednostavno i bez nepotrebnih koraka.
+          Jedan zahtev ide trenutno dostupnim proverenim majstorima za izabranu intervenciju.
         </p>
       </div>
 
@@ -45,7 +45,7 @@
               d="M12 1a5 5 0 0 0-5 5v4H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5m-3 9V6a3 3 0 0 1 6 0v4z"
             />
           </svg>
-          <span>Bez lozinki (Magic Link)</span>
+          <span>Bez lozinki i komplikovane registracije</span>
         </span>
         <span class="text-slate-300">•</span>
         <span class="inline-flex items-center gap-1.5">
@@ -55,7 +55,7 @@
               d="m12 17.27l5.18 3.73l-1.64-6.03L20 9.24l-6.19-.52L12 3L10.19 8.72L4 9.24l4.46 5.73L6.82 21z"
             />
           </svg>
-          <span>4.9 (2k+ ocena)</span>
+          <span>Cenu, dolazak i detalje dogovarate pre rada</span>
         </span>
       </div>
 
@@ -80,20 +80,20 @@ const howSteps = [
   {
     key: 'describe',
     title: 'Opiši kvar',
-    description: 'Napišite kratak opis problema i unesite adresu.',
+    description: 'Izaberite uslugu, napišite kratak opis problema i unesite adresu.',
     iconPath:
       'M19 2H8a2 2 0 0 0-2 2v4H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-4h1a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2m-1 18H5V10h13zm3-6h-3v-4a2 2 0 0 0-2-2H8V4h13z'
   },
   {
     key: 'send',
-    title: 'Pošalji zahtev',
-    description: 'Potvrdite unos i mi odmah obaveštavamo majstore u vašem kraju.',
+    title: 'Pošalji zahtev 24/7',
+    description: 'Zahtev šaljemo trenutno dostupnim proverenim majstorima za izabranu uslugu.',
     iconPath: 'M2 21l21-9L2 3v7l15 2l-15 2z'
   },
   {
     key: 'arrive',
-    title: 'Majstor vas zove',
-    description: 'Prvi slobodan majstor će vas pozvati direktno – dogovarate detalje odmah.',
+    title: 'Majstor vas kontaktira',
+    description: 'Majstor koji prihvati zahtev kontaktira vas radi dogovora oko cene, dolaska i detalja.',
     iconPath: 'M12 12a4 4 0 1 0-4-4a4 4 0 0 0 4 4m0 2c-4.42 0-8 2-8 4.5V21h16v-2.5C20 16 16.42 14 12 14'
   }
 ] as const satisfies readonly HowStep[]

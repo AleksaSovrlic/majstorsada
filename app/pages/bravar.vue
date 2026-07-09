@@ -1,8 +1,16 @@
 <template>
   <main class="w-full">
-    <LandingHero :initialTip="landing.tipQuery" :badgeText="landing.hero.badgeText" titleId="bravar-hero-title">
+    <LandingHero :badgeText="landing.hero.badgeText" titleId="bravar-hero-title">
       <template #title>
-        Hitno otvaranje vrata <span class="whitespace-nowrap">za 20 min.</span>
+        Bravari za hitno otvaranje vrata u Beogradu
+      </template>
+
+      <template #subtitle>
+        Zaključani ste, izgubili ste ključ ili brava ne radi? Pošaljite jedan zahtev — šaljemo ga trenutno dostupnim proverenim bravarima u Beogradu.
+      </template>
+
+      <template #trust>
+        Bravar koji prihvati intervenciju kontaktira vas direktno radi dogovora oko cene i dolaska.
       </template>
     </LandingHero>
 
@@ -19,10 +27,10 @@
             class="rounded-3xl bg-white/75 backdrop-blur ring-1 ring-black/5 p-6 sm:p-8"
           >
             <h3 id="bravar-problems-title" class="text-lg sm:text-xl font-extrabold text-brand-navy">
-              Najčešće situacije koje rešavamo
+              Za koje situacije možete poslati zahtev
             </h3>
             <p class="mt-2 text-sm sm:text-base text-slate-600">
-              Hitne intervencije ispred vrata – otvaranje bez oštećenja, zamena cilindra i brave po potrebi.
+              Ako ste ispred vrata, izgubili ste ključ ili brava ne radi, jedan zahtev šaljemo trenutno dostupnim proverenim bravarima.
             </p>
             <ul class="mt-4 space-y-2 text-sm sm:text-base text-slate-700">
               <li v-for="item in landing.content.commonProblems" :key="item" class="flex gap-2">
@@ -40,7 +48,7 @@
               Zašto MajstorSada
             </h3>
             <p class="mt-2 text-sm sm:text-base text-slate-600">
-              Brzo povezivanje sa slobodnim bravarom u vašoj okolini – dogovor i pomoć odmah.
+              Umesto da zovete više brojeva dok stojite ispred vrata, pošaljite jedan zahtev i dogovorite detalje sa bravarom koji prihvati intervenciju.
             </p>
             <ul class="mt-4 space-y-2 text-sm sm:text-base text-slate-700">
               <li v-for="item in landing.content.usp" :key="item" class="flex gap-2">
@@ -55,14 +63,14 @@
               :to="requestTo"
               class="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-blue text-white h-12 sm:h-14 px-6 text-base sm:text-lg font-bold shadow-lg shadow-brand-blue/25 hover:bg-brand-blue-dark active:scale-[0.99] transition-all focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-blue/20"
             >
-              <span>Zatraži bravara</span>
+              <span>Pošalji zahtev za bravara</span>
               <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
                 <path d="M11 5l7 7-7 7M4 12h14" />
               </svg>
             </NuxtLink>
 
             <p class="mt-3 text-center text-xs text-slate-600">
-              * Vreme dolaska zavisi od lokacije i dostupnosti majstora.
+              * Cenu, dolazak i način intervencije dogovarate direktno sa majstorom pre početka rada.
             </p>
           </section>
         </div>
@@ -139,37 +147,12 @@ useHead({
             mainEntity: { '@id': `${canonicalUrl}#service` }
           },
           {
-            '@type': 'Locksmith',
-            '@id': `${canonicalUrl}#localbusiness`,
-            name: 'MajstorSada – Bravar',
-            url: canonicalUrl,
-            image: `${siteUrl}/hero/city-map.webp`,
-            areaServed: { '@type': 'City', name: 'Beograd' },
-            parentOrganization: { '@id': `${siteUrl}/#organization` },
-            openingHoursSpecification: [
-              {
-                '@type': 'OpeningHoursSpecification',
-                dayOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
-                opens: '00:00',
-                closes: '23:59'
-              }
-            ],
-            priceRange: '$$',
-            aggregateRating: {
-              '@type': 'AggregateRating',
-              ratingValue: landing.schema.ratingValue,
-              ratingCount: landing.schema.ratingCount,
-              bestRating: 5,
-              worstRating: 1
-            }
-          },
-          {
             '@type': 'Service',
             '@id': `${canonicalUrl}#service`,
-            name: 'Hitno otvaranje vrata bez oštećenja',
+            name: 'Hitno otvaranje vrata i bravarske intervencije',
             serviceType: 'Bravarske usluge',
             description: landing.seo.description,
-            provider: { '@id': `${canonicalUrl}#localbusiness` },
+            provider: { '@id': `${siteUrl}/#organization` },
             areaServed: { '@type': 'City', name: 'Beograd' }
           },
           {
@@ -197,4 +180,3 @@ useHead({
 
 const requestTo = computed(() => ({ path: '/zahtev', query: { tip: landing.tipQuery } }))
 </script>
-

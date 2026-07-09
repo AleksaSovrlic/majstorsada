@@ -23,11 +23,6 @@ export interface ServiceLandingConfig {
     commonProblems: string[]
     faq: FaqItem[]
   }
-  schema: {
-    /** Social proof (used in JSON-LD). */
-    ratingValue: number
-    ratingCount: number
-  }
 }
 
 export const vodoinstalaterLanding: ServiceLandingConfig = {
@@ -35,80 +30,74 @@ export const vodoinstalaterLanding: ServiceLandingConfig = {
   path: '/vodoinstalater',
   tipQuery: 'vodoinstalater',
   seo: {
-    title: 'Vodoinstalateri Beograd | Hitne Intervencije | Stižemo za 30 min',
+    title: 'Vodoinstalater Beograd 24/7 | Brz dolazak',
     description:
-      'Vodoinstalateri Beograd - Stižemo za 30 min. Hitne intervencije 00-24h: zapušen odvod, curenje vode, popravka bojlera... Povoljne cene i garancija.'
+      'Vodoinstalater Beograd 24/7 za curenje vode, zapušen odvod i bojler. Pošaljite zahtev — šaljemo ga dostupnim proverenim majstorima za brz dolazak.'
   },
   hero: {
-    badgeText: 'Vodoinstalateri Beograd • Hitne intervencije 00-24h'
+    badgeText: 'Pošaljite zahtev 24/7 • Vodoinstalateri Beograd'
   },
   content: {
     usp: [
-      'Dolazak za 30 minuta (pokrivamo ceo Beograd)',
-      'Izdajemo račun i pisanu garanciju na radove',
-      'Fiksna cena i dogovor pre početka radova',
-      'Provereni majstori sa visokim ocenama'
+      'Jedan zahtev šaljemo trenutno dostupnim proverenim vodoinstalaterima za brz dolazak',
+      'Bez zvanja 10 brojeva i ponavljanja istog problema',
+      'Vodoinstalater koji prihvati intervenciju kontaktira vas direktno',
+      'Cenu, dolazak i detalje dogovarate pre početka rada'
     ],
     commonProblems: [
-      // NAJČEŠĆI PROBLEMI (Jezik korisnika)
       'Zapušen odvod (WC šolja, sudopera, kada, lavabo)',
       'Voda slabo otiče ili se vraća iz slivnika',
       'Neprijatni mirisi iz kanalizacije u kupatilu',
       'Curenje vode ispod kade ili tuš kabine',
-      'Voda curi kod komšije ispod (Hitne intervencije)',
-
-      // HITNE POPRAVKE
-      'Pukla cev u zidu ili podu (Sanacija poplave)',
+      'Voda curi kod komšije ispod (hitna intervencija)',
+      'Pukla cev u zidu ili podu',
       'Ventil ne drži vodu / ne može da se zatvori',
       'Zamena slavine koja kaplje ili curi',
-      'Brza zamena brinox creva (da ne pukne)',
-
-      // BOJLERI
+      'Zamena fleksibilnog priključnog creva',
       'Bojler ne greje vodu ili brzo potroši toplu vodu',
-      'Bojler curi ili pucketa (čišćenje kamenca)',
-      'Montaža novog bojlera (i skidanje starog)',
-
-      // UREĐAJI I MONTAŽA
+      'Bojler curi ili pucketa',
+      'Montaža novog bojlera i skidanje starog',
       'Povezivanje mašine za sudove i veš mašine',
       'Montaža WC šolje, vodokotlića i lavaboa',
-      'Silikoniranje kade (da ne curi voda sa strane)'
+      'Silikoniranje kade ili tuš kabine'
     ],
     faq: [
       {
+        question: 'Kako da pošaljem zahtev kada mi hitno treba vodoinstalater u Beogradu?',
+        answer:
+          'Izaberite vodoinstalatera, opišite kvar i pošaljite zahtev. Prosleđujemo ga trenutno dostupnim proverenim vodoinstalaterima, a majstor koji prihvati intervenciju kontaktira vas direktno.'
+      },
+      {
+        question: 'Da li mogu da pošaljem zahtev za vodoinstalatera 24/7?',
+        answer:
+          'Da. Zahtev možete poslati u bilo kom trenutku. Sistem ga šalje trenutno dostupnim proverenim vodoinstalaterima za izabranu vrstu kvara.'
+      },
+      {
         question: 'Koliko brzo može da dođe vodoinstalater?',
         answer:
-          'Za većinu beogradskih opština (Novi Beograd, Vračar, Stari Grad, Zemun, Zvezdara...) stižemo za oko 30 minuta. Tačno vreme zavisi od lokacije i gužve.'
+          'Zahtev odmah šaljemo trenutno dostupnim proverenim vodoinstalaterima. Vodoinstalater koji prihvati intervenciju kontaktira vas direktno da dogovorite brz dolazak, cenu i detalje.'
       },
       {
-        question: 'Da li radite 00-24h?',
+        question: 'Šta da radim ako curi voda dok čekam odgovor majstora?',
         answer:
-          'Da – platforma radi 00-24h, a dostupnost majstora zavisi od toga ko je trenutno slobodan u vašem kraju.'
+          'Ako možete bezbedno, zatvorite najbliži ventil ili glavni ventil za vodu i sklonite stvari od curenja. Ne dirajte mokre električne uređaje.'
       },
       {
-        question: 'Kako se formira cena?',
+        question: 'Da li mogu da pošaljem slike kvara?',
         answer:
-          'Cenu dogovarate direktno sa majstorom nakon što prihvati zahtev i pozove vas – pre izlaska na teren dobijate jasne informacije o okvirnoj ceni.'
+          'Da. Ako imate fotografije curenja, odvoda, bojlera ili ventila, dodajte ih uz zahtev kako bi majstor lakše procenio situaciju.'
       },
       {
-        question: 'Da li su majstori provereni?',
+        question: 'Kako se dogovara cena vodoinstalaterske intervencije?',
         answer:
-          'Da – majstori prolaze verifikaciju pre nego što postanu dostupni na platformi.'
+          'Cenu, dolazak i obim rada dogovarate direktno sa vodoinstalaterom koji prihvati intervenciju, pre početka rada.'
       },
       {
-        question: 'Šta ako je kvar hitan (pucanje cevi)?',
+        question: 'Za koje kvarove mogu da pošaljem zahtev?',
         answer:
-          'U opisu zahteva navedite da je kvar hitan i dodajte što više detalja. Sistem odmah prosleđuje zahtev majstorima u vašoj okolini.'
-      },
-      {
-        question: 'Da li su moji podaci javni?',
-        answer:
-          'Ne – vaši podaci nisu javni. Majstor dobija informacije tek nakon što prihvati posao, kako bi vas pozvao i dogovorio detalje.'
+          'Možete poslati zahtev za curenje vode, zapušen odvod, problem sa bojlerom, ventilom, slavinom, WC šoljom, vodokotlićem ili drugim vodoinstalaterskim kvarom.'
       }
     ]
-  },
-  schema: {
-    ratingValue: 4.9,
-    ratingCount: 320
   }
 } as const
 
@@ -117,19 +106,19 @@ export const elektricarLanding: ServiceLandingConfig = {
   path: '/elektricar',
   tipQuery: 'elektricar',
   seo: {
-    title: 'Električari Beograd | Hitne Intervencije | Stižemo za 30 min',
+    title: 'Električar Beograd 24/7 | Brz dolazak',
     description:
-      'Električari Beograd - Stižemo za 30 min. Hitne intervencije 00-24h: nestanak struje, iskače osigurač, servis TA peći i bojlera... Povoljne cene i garancija.'
+      'Električar Beograd 24/7 za nestanak struje, osigurače, bojler i TA peć. Pošaljite zahtev — šaljemo ga dostupnim proverenim električarima za brz dolazak.'
   },
   hero: {
-    badgeText: 'Električari Beograd • Hitne intervencije 00-24h'
+    badgeText: 'Pošaljite zahtev 24/7 • Električari Beograd'
   },
   content: {
     usp: [
-      'Dolazak za 30-45 minuta (ceo Beograd)',
-      'Ovlašćeni električari',
-      'Račun i garancija na sve elektro radove',
-      'Hitne popravke 00-24'
+      'Jedan zahtev šaljemo trenutno dostupnim proverenim električarima za brz dolazak',
+      'Bez zvanja 10 brojeva dok tražite ko je slobodan',
+      'Električar koji prihvati intervenciju kontaktira vas direktno',
+      'Cenu, dolazak i detalje dogovarate pre početka rada'
     ],
     commonProblems: [
       'Nestanak struje u stanu ili delu stana',
@@ -137,36 +126,47 @@ export const elektricarLanding: ServiceLandingConfig = {
       'Utičnica varniči / miris paljevine iz zida',
       'Servis TA peći (ne duva, ne greje, zamena grejača)',
       'Bojler ne greje vodu',
-      'Zamena table sa osiguračima (ugradnja automatskih)',
+      'Zamena table sa osiguračima',
       'Povezivanje šporeta, rerne i indukcione ploče',
       'Ugradnja LED rasvete, lustera i plafonjera'
     ],
     faq: [
       {
-        question: 'Koliko brzo stiže električar u Beogradu?',
+        question: 'Kada treba odmah da pošaljem zahtev električaru?',
         answer:
-          'Za većinu beogradskih opština (Novi Beograd, Vračar, Stari Grad, Zemun, Zvezdara...) stižemo za 30–45 minuta. Tačno vreme zavisi od lokacije i gužve.'
+          'Pošaljite zahtev kada imate nestanak struje, varničenje, miris paljevine, problem sa osiguračima, bojlerom, TA peći ili instalacijom koju ne treba sami da popravljate.'
       },
       {
-        question: 'Da li izdajete račun i garanciju?',
+        question: 'Da li mogu da pošaljem zahtev za električara 24/7?',
         answer:
-          'Da – izdajemo račun i pisanu garanciju na elektro radove, u skladu sa dogovorom i vrstom intervencije.'
+          'Da. Zahtev možete poslati u bilo kom trenutku, a sistem ga prosleđuje trenutno dostupnim proverenim električarima za tu vrstu intervencije.'
       },
       {
-        question: 'Da li radite hitne intervencije 00-24?',
+        question: 'Koliko brzo može da dođe električar?',
         answer:
-          'Da – platforma radi 00-24. Dostupnost električara zavisi od toga ko je trenutno slobodan u vašem kraju.'
+          'Zahtev odmah prosleđujemo trenutno dostupnim proverenim električarima. Električar koji prihvati intervenciju kontaktira vas direktno da dogovorite brz dolazak, cenu i detalje.'
       },
       {
-        question: 'Radite li servis TA peći?',
+        question: 'Šta da radim ako utičnica varniči ili se oseća miris paljevine?',
         answer:
-          'Da – radimo dijagnostiku i servis TA peći (grejači, termostati, ventilatori), kao i bezbednu proveru instalacije.'
+          'Ne dirajte instalaciju i ne pokušavajte popravku. Ako možete bezbedno, isključite odgovarajući osigurač ili glavni prekidač i pošaljite zahtev električaru.'
+      },
+      {
+        question: 'Da li mogu da pošaljem zahtev za bojler, TA peć ili osigurače?',
+        answer:
+          'Da. Možete poslati zahtev za bojler, TA peć, osigurače, utičnice, rasvetu, tablu sa osiguračima i druge elektro kvarove.'
+      },
+      {
+        question: 'Kako da opišem električni kvar?',
+        answer:
+          'Navedite šta ne radi, kada se kvar pojavio, da li iskače osigurač, ima li varničenja ili mirisa paljevine i da li je problem u celom stanu ili samo u jednoj prostoriji.'
+      },
+      {
+        question: 'Kako se dogovara cena električarske intervencije?',
+        answer:
+          'Cenu, dolazak i obim intervencije dogovarate direktno sa električarom koji prihvati zahtev, pre početka rada.'
       }
     ]
-  },
-  schema: {
-    ratingValue: 4.9,
-    ratingCount: 320
   }
 } as const
 
@@ -175,56 +175,66 @@ export const bravarLanding: ServiceLandingConfig = {
   path: '/bravar',
   tipQuery: 'bravar',
   seo: {
-    title: 'Bravari Beograd | Hitno Otvaranje Vrata | Stižemo za 20 min',
+    title: 'Bravar Beograd 24/7 | Brz dolazak',
     description:
-      'Bravari Beograd - Stižemo za 20 min. Hitno otvaranje vrata bez oštećenja 00-24h: zaglavljena brava, izgubljen ključ, zamena cilindra. Povoljno i brzo.'
+      'Bravar Beograd 24/7 za otvaranje vrata, izgubljen ključ i zaglavljenu bravu. Pošaljite zahtev — šaljemo ga dostupnim proverenim bravarima za brz dolazak.'
   },
   hero: {
-    badgeText: 'Bravari Beograd • Otvaranje bez oštećenja 00-24h'
+    badgeText: 'Pošaljite zahtev 24/7 • Bravari Beograd'
   },
   content: {
     usp: [
-      'Dolazak za 20-30 minuta',
-      'Otvaranje vrata BEZ OŠTEĆENJA (specijalni alat)',
-      'Zamena brave i cilindra odmah na licu mesta',
-      'Dežurni bravari 00-24h (noćne intervencije)'
+      'Jedan zahtev šaljemo trenutno dostupnim proverenim bravarima za brz dolazak',
+      'Bez zvanja 10 brojeva dok stojite ispred vrata',
+      'Bravar koji prihvati intervenciju kontaktira vas direktno',
+      'Cenu, dolazak i način intervencije dogovarate pre početka rada'
     ],
     commonProblems: [
       'Hitno otvaranje zaglavljenih vrata (stan, kuća)',
       'Ključ ostao u bravi sa unutrašnje strane',
       'Izgubljeni ključevi (otvaranje + zamena cilindra)',
       'Ključ se polomio u bravi ili neće da se okrene',
-      'Vrata neće da se zaključaju (pao jezičak)',
-      'Otvaranje sigurnosnih (blindiranih) vrata bez štete',
+      'Vrata neće da se zaključaju',
+      'Otvaranje sigurnosnih vrata',
       'Zamena kvaka, štitnika i sigurnosnih brava',
-      'Montaža dodatne "H" brave ili reze'
+      'Montaža dodatne brave ili reze'
     ],
     faq: [
       {
-        question: 'Koliko brzo stiže bravar u Beogradu?',
+        question: 'Kada treba da pošaljem zahtev bravaru za hitnu intervenciju?',
         answer:
-          'U većini slučajeva možemo da stignemo za 20–30 minuta u Beogradu. Tačno vreme zavisi od lokacije i gužve.'
+          'Pošaljite zahtev ako ste zaključani, izgubili ste ključ, ključ je pukao u bravi, vrata su zaglavljena ili je potrebna zamena cilindra.'
       },
       {
-        question: 'Da li ćete mi oštetiti vrata?',
+        question: 'Da li mogu da pošaljem zahtev za bravara 24/7?',
         answer:
-          'Ne. Koristimo specijalne alate za otvaranje bez bušenja i oštećenja vrata, čak i kod sigurnosnih modela.'
+          'Da. Zahtev možete poslati u bilo kom trenutku, a sistem ga prosleđuje trenutno dostupnim proverenim bravarima za izabranu intervenciju.'
       },
       {
-        question: 'Da li menjate cilindar/bravu odmah?',
+        question: 'Koliko brzo može da dođe bravar?',
         answer:
-          'Da – po potrebi radimo zamenu cilindra i brave odmah na licu mesta, kako biste odmah bili bezbedni.'
+          'Zahtev odmah šaljemo trenutno dostupnim proverenim bravarima. Bravar koji prihvati intervenciju kontaktira vas direktno da dogovorite brz dolazak, cenu i način otvaranja ili zamene brave.'
       },
       {
-        question: 'Da li radite 00-24h?',
+        question: 'Može li brava da se otvori bez oštećenja?',
         answer:
-          'Da – dežurni bravari su dostupni 00-24h. Dostupnost zavisi od toga ko je trenutno slobodan u vašem kraju.'
+          'U mnogim slučajevima moguće je predložiti rešenje sa minimalnim oštećenjem, ali način intervencije zavisi od brave i situacije.'
+      },
+      {
+        question: 'Da li je potrebna potvrda da imam pravo pristupa stanu?',
+        answer:
+          'Da, bravar može tražiti potvrdu da imate pravo pristupa prostoru, naročito kod hitnog otvaranja stana, kuće ili poslovnog prostora.'
+      },
+      {
+        question: 'Kako se dogovara cena otvaranja vrata ili zamene cilindra?',
+        answer:
+          'Cenu, dolazak i način intervencije dogovarate direktno sa bravarom koji prihvati zahtev, pre početka rada.'
+      },
+      {
+        question: 'Šta ako je ključ pukao u bravi ili je brava zaglavljena?',
+        answer:
+          'Opišite šta se desilo i dodajte fotografije ako ih imate. Bravar koji prihvati zahtev kontaktira vas da proceni situaciju i dogovori intervenciju.'
       }
     ]
-  },
-  schema: {
-    ratingValue: 4.9,
-    ratingCount: 320
   }
 } as const
-
