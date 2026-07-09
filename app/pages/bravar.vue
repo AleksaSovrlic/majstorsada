@@ -5,14 +5,12 @@
         Bravari za hitno otvaranje vrata u Beogradu
       </template>
 
-      <template #subtitle>
-        Zaključani ste, izgubili ste ključ ili brava ne radi? Pošaljite jedan zahtev — šaljemo ga trenutno dostupnim proverenim bravarima u Beogradu.
-      </template>
-
-      <template #trust>
-        Bravar koji prihvati intervenciju kontaktira vas direktno radi dogovora oko cene i dolaska.
-      </template>
     </LandingHero>
+
+    <LandingExplainer
+      heading="Bravar bez zvanja 10 brojeva"
+      text="Pošaljite zahtev za hitno otvaranje vrata 24/7. Zahtev šaljemo trenutno dostupnim proverenim bravarima za brz dolazak, a bravar koji prihvati intervenciju kontaktira vas radi dogovora oko cene i načina intervencije."
+    />
 
     <LandingHowItWorks>
       <!-- SEO CONTENT (Below the fold) -->

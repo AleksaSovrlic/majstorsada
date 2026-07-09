@@ -2,17 +2,15 @@
   <main class="w-full">
     <LandingHero titleId="home-hero-title">
       <template #title>
-        Majstor za hitne intervencije u Beogradu — 24/7
+        Majstor za hitne intervencije u Beogradu - 24/7
       </template>
 
-      <template #subtitle>
-        Pošaljite zahtev za manje od minut. Zahtev odmah šaljemo trenutno dostupnim proverenim majstorima za brz dolazak — bez zvanja 10 brojeva.
-      </template>
-
-      <template #trust>
-        Majstor koji prihvati intervenciju kontaktira vas direktno radi dogovora oko cene, dolaska i detalja.
-      </template>
     </LandingHero>
+
+    <LandingExplainer
+      heading="Bez zvanja 10 brojeva"
+      text="Pošaljite zahtev 24/7 - povezujemo vas sa trenutno dostupnim proverenim majstorima za brz dolazak. Majstor koji prihvati intervenciju kontaktira vas direktno radi dogovora oko cene, dolaska i detalja."
+    />
 
     <LandingHowItWorks>
       <section aria-labelledby="home-faq-title">
@@ -52,7 +50,7 @@ definePageMeta({ layout: 'home' })
 useSeoMeta({
   title: 'Hitne intervencije u Beogradu 24/7 | Brz dolazak',
   description:
-    'Majstor za hitne intervencije u Beogradu 24/7. Bez zvanja 10 brojeva — povezujemo vas sa proverenim majstorima za brz dolazak.',
+    'Majstor za hitne intervencije u Beogradu 24/7. Bez zvanja 10 brojeva - povezujemo vas sa proverenim majstorima za brz dolazak.',
   ogTitle: 'MajstorSada',
   ogDescription:
     'Majstor za hitne intervencije u Beogradu 24/7. Pošaljite jedan zahtev trenutno dostupnim proverenim majstorima — bez zvanja 10 brojeva.'

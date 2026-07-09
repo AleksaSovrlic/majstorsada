@@ -5,14 +5,12 @@
         Vodoinstalateri za hitne intervencije u Beogradu
       </template>
 
-      <template #subtitle>
-        Curenje vode, zapušen odvod ili problem sa bojlerom? Pošaljite jedan zahtev — šaljemo ga trenutno dostupnim proverenim vodoinstalaterima.
-      </template>
-
-      <template #trust>
-        Vodoinstalater koji prihvati intervenciju kontaktira vas direktno radi dogovora oko cene i dolaska.
-      </template>
     </LandingHero>
+
+    <LandingExplainer
+      heading="Vodoinstalater bez zvanja 10 brojeva"
+      text="Pošaljite zahtev za vodoinstalatersku intervenciju 24/7. Zahtev šaljemo trenutno dostupnim proverenim vodoinstalaterima za brz dolazak, a majstor koji prihvati intervenciju kontaktira vas radi dogovora oko cene i dolaska."
+    />
 
     <LandingHowItWorks>
       <!-- SEO CONTENT (Below the fold) -->

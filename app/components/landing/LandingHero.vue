@@ -42,13 +42,6 @@
               <slot name="title" />
             </h1>
 
-            <p v-if="hasSubtitle" class="mt-4 text-sm sm:text-lg leading-relaxed text-slate-700">
-              <slot name="subtitle" />
-            </p>
-
-            <p v-if="hasTrust" class="mt-3 text-xs sm:text-sm font-semibold leading-relaxed text-brand-navy">
-              <slot name="trust" />
-            </p>
           </div>
 
           <!-- Selector Card (STRADDLE): pushed down with negative margin into the next section -->
@@ -125,7 +118,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, useSlots } from 'vue'
+import { computed } from 'vue'
 import { serviceOptions, type ServiceTipSlug } from '@/utils/services'
 
 withDefaults(
@@ -143,7 +136,6 @@ withDefaults(
   }
 )
 
-const slots = useSlots()
 const route = useRoute()
 
 const normalizedPath = computed(() => route.path.replace(/\/+$/, '') || '/')
@@ -153,9 +145,6 @@ const activeOption = computed(() => {
 })
 
 const activeTip = computed<ServiceTipSlug | null>(() => activeOption.value?.slug ?? null)
-const hasSubtitle = computed(() => typeof slots.subtitle === 'function')
-const hasTrust = computed(() => typeof slots.trust === 'function')
-
 const ctaText = computed(() => 'Pošalji zahtev')
 
 const ctaTo = computed(() => {

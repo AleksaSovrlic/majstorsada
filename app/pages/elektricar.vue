@@ -5,14 +5,12 @@
         Električari za hitne intervencije u Beogradu
       </template>
 
-      <template #subtitle>
-        Nestanak struje, osigurači, utičnice, bojler ili TA peć? Pošaljite jedan zahtev — šaljemo ga trenutno dostupnim proverenim električarima.
-      </template>
-
-      <template #trust>
-        Električar koji prihvati intervenciju kontaktira vas direktno radi dogovora oko cene, dolaska i detalja.
-      </template>
     </LandingHero>
+
+    <LandingExplainer
+      heading="Električar bez zvanja 10 brojeva"
+      text="Pošaljite zahtev za električarsku intervenciju 24/7. Zahtev šaljemo trenutno dostupnim proverenim električarima za brz dolazak, a električar koji prihvati intervenciju kontaktira vas radi dogovora oko cene, dolaska i detalja."
+    />
 
     <LandingHowItWorks>
       <!-- SEO CONTENT (Below the fold) -->
