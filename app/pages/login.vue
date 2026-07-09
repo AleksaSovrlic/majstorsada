@@ -248,7 +248,7 @@ async function sendLink() {
     } else if (e?.code === 'auth/too-many-requests') {
       errorMsg.value = 'Previše pokušaja. Pokušajte kasnije.'
     } else {
-      errorMsg.value = e?.message || 'Greška pri slanju Magic Link-a.'
+      errorMsg.value = e?.message || 'Greška pri slanju e-mail linka za prijavu.'
     }
   } finally {
     sending.value = false
@@ -282,5 +282,4 @@ async function changeEmail() {
   }
 }
 </style>
-
 

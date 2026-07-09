@@ -1,6 +1,4 @@
 // Seed one test tradesperson into local Firebase emulators (Auth + Firestore)
-// Requirements:
-// Hardcode emulator hosts for local testing
 process.env.FIREBASE_AUTH_EMULATOR_HOST = "127.0.0.1:9199";
 process.env.FIRESTORE_EMULATOR_HOST = "127.0.0.1:8180";
 
@@ -14,10 +12,17 @@ if (admin.apps.length === 0) {
   admin.initializeApp({ projectId })
 }
 
-const AUTH_EMAIL = 'test@majstor.com'
-const AUTH_PASSWORD = 'sifra123'
+const AUTH_EMAIL = process.env.SEED_TRADESPERSON_EMAIL
+const AUTH_PASSWORD = process.env.SEED_TRADESPERSON_PASSWORD
 const DISPLAY_NAME = 'Petar Petrovic'
 const SPECIALIZATION = 'vodoinstalater'
+
+if (!AUTH_EMAIL || !AUTH_PASSWORD) {
+  console.error(
+    'Missing required seed credentials. Set SEED_TRADESPERSON_EMAIL and SEED_TRADESPERSON_PASSWORD before running this local emulator seed script.'
+  )
+  process.exit(1)
+}
 
 async function main() {
   const auth = admin.auth()
