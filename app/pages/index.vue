@@ -50,9 +50,9 @@
 definePageMeta({ layout: 'home' })
 
 useSeoMeta({
-  title: 'Majstor za hitne intervencije Beograd 24/7',
+  title: 'Hitne intervencije u Beogradu 24/7 | Brz dolazak',
   description:
-    'Majstor za hitne intervencije u Beogradu 24/7. Pošaljite jedan zahtev trenutno dostupnim proverenim majstorima — bez zvanja 10 brojeva.',
+    'Majstor za hitne intervencije u Beogradu 24/7. Bez zvanja 10 brojeva — povezujemo vas sa proverenim majstorima za brz dolazak.',
   ogTitle: 'MajstorSada',
   ogDescription:
     'Majstor za hitne intervencije u Beogradu 24/7. Pošaljite jedan zahtev trenutno dostupnim proverenim majstorima — bez zvanja 10 brojeva.'
