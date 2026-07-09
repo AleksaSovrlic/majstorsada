@@ -37,6 +37,8 @@ try {
     Pop-Location
   }
 
+  $env:FUNCTIONS_DISCOVERY_TIMEOUT = '60'
+  Write-Host "Using FUNCTIONS_DISCOVERY_TIMEOUT=$env:FUNCTIONS_DISCOVERY_TIMEOUT seconds..."
   Write-Host 'Deploying to Firebase production...'
   firebase deploy --only 'firestore,storage,functions,hosting' --project majstorsada-b2ad4
   if ($LASTEXITCODE -ne 0) {
