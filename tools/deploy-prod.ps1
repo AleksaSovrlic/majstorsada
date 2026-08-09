@@ -5,6 +5,18 @@ $ProjectRoot = Resolve-Path (Join-Path $ScriptDir '..')
 
 Push-Location $ProjectRoot
 try {
+  # Same rule the Nuxt config and the functions generator apply independently: no commit, no build.
+  # Printed up front so it can be compared against the three post-deploy probes.
+  $BuildSha = git rev-parse --short HEAD
+  if ($LASTEXITCODE -ne 0) {
+    Write-Error 'Cannot resolve the Git commit. A build that cannot identify itself must not be deployed.' -ErrorAction Continue
+    exit 1
+  }
+  if (git status --porcelain) {
+    $BuildSha = "$BuildSha-dirty"
+  }
+  Write-Host "Deploying build: $BuildSha"
+
   Write-Host 'Compiling Cloud Functions...'
   npm --prefix functions run build
   if ($LASTEXITCODE -ne 0) {

@@ -1,4 +1,5 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
+import { execSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
@@ -6,12 +7,39 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 const SITE_URL = (process.env.NUXT_PUBLIC_SITE_URL || 'https://majstorsada.rs').replace(/\/+$/, '')
 
+// The Git commit this build was produced from. Surfaces publicly in two places:
+//   - `_nuxt/builds/latest.json` (static, served by Hosting)
+//   - the `builds/meta/<buildId>.json` preload link in server-rendered HTML (served by the SSR function)
+// Deliberately has no fallback: a production build that cannot identify itself must not be produced,
+// because a placeholder would make every probe agree and the post-deploy check pass on nothing.
+// `nuxt build` sets NODE_ENV=production before loading this config, `nuxt dev` sets development.
+function resolveBuildId (): string {
+  if (process.env.NODE_ENV === 'development') {
+    return 'dev'
+  }
+  try {
+    const git = (args: string) =>
+      execSync(`git ${args}`, { cwd: __dirname, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
+    const sha = git('rev-parse --short HEAD')
+    return git('status --porcelain') ? `${sha}-dirty` : sha
+  } catch (error) {
+    throw new Error(
+      'Cannot resolve the Git commit for buildId. A production build that cannot identify itself must not be deployed. '
+      + `Original error: ${(error as Error).message}`
+    )
+  }
+}
+
+const BUILD_ID = resolveBuildId()
+
 export default defineNuxtConfig({
   srcDir: 'app',
   alias: {
     '@': join(__dirname, 'app')
   },
   compatibilityDate: '2025-07-15',
+  // Replaces Nuxt's random per-build UUID, so the deployed build names its own commit.
+  buildId: BUILD_ID,
   // Production safety: disable Nuxt DevTools in prod builds
   devtools: { enabled: false },
   site: {

@@ -8,6 +8,7 @@ import { FieldValue, getFirestore } from 'firebase-admin/firestore'
 import { getAuth } from 'firebase-admin/auth'
 import cors from 'cors'
 import { getMessaging } from 'firebase-admin/messaging'
+import { BUILD_SHA } from './version'
 import path from 'path'
 import fs from 'fs'
 
@@ -36,7 +37,7 @@ import fs from 'fs'
 })()
 
 export const health = onRequest({ region: 'europe-west3' }, (req, res) => {
-  res.status(200).send({ ok: true, service: 'functions', env: process.env.NODE_ENV || 'development' })
+  res.status(200).send({ ok: true, service: 'functions', env: process.env.NODE_ENV || 'development', version: BUILD_SHA })
 })
 
 const corsHandler = cors({

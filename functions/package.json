@@ -6,7 +6,7 @@
   },
   "main": "lib/index.js",
   "scripts": {
-    "build": "rimraf lib && tsc -p tsconfig.json",
+    "build": "node scripts/gen-version.mjs && rimraf lib && tsc -p tsconfig.json",
     "clean": "rimraf lib",
     "lint": "echo 'no lint configured'",
     "start": "npm run build && firebase emulators:start --only functions"
