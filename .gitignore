@@ -6,6 +6,9 @@
 .cache
 dist
 
+# --- Cloud Functions build output ---
+functions/lib/
+
 # --- Dependencies ---
 node_modules
 

@@ -3,10 +3,14 @@
     {
       "source": "functions",
       "codebase": "api",
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" run build"
+      ],
       "ignore": [
         "node_modules",
         ".git",
         ".nuxt",
+        ".keys",
         "**/test/**"
       ]
     },

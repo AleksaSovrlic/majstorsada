@@ -5,6 +5,12 @@ $ProjectRoot = Resolve-Path (Join-Path $ScriptDir '..')
 
 Push-Location $ProjectRoot
 try {
+  Write-Host 'Compiling Cloud Functions...'
+  npm --prefix functions run build
+  if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+  }
+
   Write-Host 'Building Nuxt app...'
   npm run build
   if ($LASTEXITCODE -ne 0) {
@@ -12,6 +18,7 @@ try {
   }
 
   $requiredArtifacts = @(
+    'functions/lib/index.js',
     '.output/public',
     '.output/server',
     '.output/server/index.mjs',
