@@ -17,6 +17,9 @@
     {
       "source": ".output/server",
       "codebase": "nuxt-ssr",
+      "predeploy": [
+        "node \"$PROJECT_DIR/tools/assert-ssr-deps.mjs\""
+      ],
       "ignore": [
         "node_modules",
         ".git"
@@ -32,12 +35,21 @@
   },
   "hosting": {
     "public": ".output/public",
+    "//": "Prerendered routes are written as <route>/index.html (Nitro's autoSubfolderIndex). Without this, Hosting 301s /vodoinstalater to /vodoinstalater/, changing URLs that are already indexed. Verified on a preview channel.",
+    "trailingSlash": false,
     "ignore": [
       "firebase.json",
       "**/.*",
       "**/node_modules/**"
     ],
     "headers": [
+      {
+        "comment": "Prerendered pages. Firebase defaults static content to max-age=3600, which would let a returning visitor see the previous deploy for up to an hour. The referenced _nuxt assets are content-hashed, so revalidating the HTML is enough.",
+        "source": "/@(|vodoinstalater|elektricar|bravar)",
+        "headers": [
+          { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+        ]
+      },
       {
         "source": "/firebase-messaging-sw.js",
         "headers": [

@@ -44,6 +44,8 @@ try {
     }
   }
 
+  # .output/server/node_modules is never uploaded; this install exists to produce the
+  # package-lock.json that IS uploaded and that Cloud Build installs from.
   Write-Host 'Installing production dependencies for Nuxt SSR function...'
   Push-Location '.output/server'
   try {
@@ -55,6 +57,13 @@ try {
   finally {
     Pop-Location
   }
+
+  node tools/assert-ssr-deps.mjs
+  if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+  }
+  $ssrRuntime = node -p "require('./.output/server/package-lock.json').packages['node_modules/firebase-functions'].version"
+  Write-Host "SSR runtime: firebase-functions@$ssrRuntime"
 
   $env:FUNCTIONS_DISCOVERY_TIMEOUT = '60'
   Write-Host "Using FUNCTIONS_DISCOVERY_TIMEOUT=$env:FUNCTIONS_DISCOVERY_TIMEOUT seconds..."

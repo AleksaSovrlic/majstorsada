@@ -1,5 +1,6 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
 import { execSync } from 'node:child_process'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
@@ -78,6 +79,57 @@ export default defineNuxtConfig({
       inline: ['pinia', '@vue/devtools-api']
     }
   },
+  hooks: {
+    // Registered through `nitro:init` rather than `nitro.hooks` in this config: a `compiled`
+    // entry there REPLACES the preset's own hook of that name, which silently skips
+    // `updatePackageJSON` and strips `main` and `engines.node` from the generated package.json.
+    // Hooking the instance is additive and runs after the preset's, which is what we need.
+    'nitro:init' (nitro) {
+      nitro.hooks.hook('compiled', () => {
+        // Prerendering spins up a second Nitro instance with its own output dir and no
+        // generated package.json. Only the real server build is ours to police.
+        if (nitro.options.preset === 'nitro-prerender') {
+          return
+        }
+
+        const pkgPath = join(nitro.options.output.serverDir, 'package.json')
+        const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
+        const deps: Record<string, string> = pkg.dependencies || {}
+
+        // The preset defaults firebase-admin and firebase-functions to "latest"
+        // (nitropack/dist/presets/firebase/utils.mjs), which re-resolves on every deploy and
+        // makes the SSR runtime non-deterministic. Nitro overrides that default with the exact
+        // installed version for anything the bundle actually pulls in, so both are governed by
+        // the committed root lockfile instead.
+        //
+        // This hook never invents a version. A package still sitting at "latest" means nothing
+        // traced it, so it is dead weight the preset added on spec: drop it. Anything else that
+        // is still unpinned is a mistake we refuse to ship.
+        for (const [name, version] of Object.entries(deps)) {
+          if (version === 'latest') {
+            delete deps[name]
+            nitro.logger.info(`SSR dependency "${name}" was untraced and unpinned - removed`)
+          }
+        }
+
+        pkg.dependencies = deps
+        writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8')
+
+        // The preset writes these; losing them would leave Cloud Build without an entry point
+        // and without a pinned runtime. Fail loudly rather than deploy a package.json like that.
+        for (const field of ['main', 'engines'] as const) {
+          if (!pkg[field]) {
+            throw new Error(
+              `The generated SSR package.json is missing "${field}". The Firebase preset's own `
+              + 'compiled hook did not run - check that this hook is registered additively.'
+            )
+          }
+        }
+
+        nitro.logger.info(`SSR dependencies pinned: ${Object.keys(deps).length} packages, node ${pkg.engines.node}`)
+      })
+    }
+  },
   app: {
     head: {
       htmlAttrs: {
@@ -148,25 +200,34 @@ export default defineNuxtConfig({
     '/finishLogin': { robots: false },
     '/zahtev': { robots: false },
     '/potvrda': { robots: false },
+    // The four public pages carry no server data: their scripts hold only `definePageMeta`,
+    // `useSeoMeta` and literal arrays, and the role-dependent part of PublicHeader sits inside
+    // `<ClientOnly>`, so server output cannot vary with auth state. Prerendering them means
+    // Hosting serves static files instead of invoking the SSR function for every visitor.
+    // Nitro merges these into the same route set as `nitro.prerender.routes` (core/index.mjs).
     '/vodoinstalater': {
+      prerender: true,
       sitemap: {
         changefreq: 'weekly',
         priority: 0.9
       }
     },
     '/elektricar': {
+      prerender: true,
       sitemap: {
         changefreq: 'weekly',
         priority: 0.9
       }
     },
     '/bravar': {
+      prerender: true,
       sitemap: {
         changefreq: 'weekly',
         priority: 0.9
       }
     },
     '/': {
+      prerender: true,
       sitemap: {
         changefreq: 'weekly',
         priority: 1.0
