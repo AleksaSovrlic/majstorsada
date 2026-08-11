@@ -1,6 +1,6 @@
 import { HttpsError, onRequest } from 'firebase-functions/v2/https'
 import * as functions from 'firebase-functions/v1'
-import { onDocumentCreated } from 'firebase-functions/v2/firestore'
+import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore'
 // OBBRISANA LINIJA: import { region } from 'firebase-functions' <-- OVO JE PRAVILO PROBLEM
 import * as logger from 'firebase-functions/logger'
 import { initializeApp, cert, applicationDefault } from 'firebase-admin/app'
@@ -72,7 +72,13 @@ async function verifyBearer(req: any): Promise<{ uid: string; email?: string } |
   }
 }
 
-type PushEventName = 'notifyTradespeople' | 'notifyTradespeopleOnImagesReady'
+// The 2nd gen triggers log under their own names so that, while both generations are deployed
+// side by side, the logs show which one fired rather than two indistinguishable entries.
+type PushEventName =
+  | 'notifyTradespeople'
+  | 'notifyTradespeopleOnImagesReady'
+  | 'notifyOnJobCreated'
+  | 'notifyOnJobImagesReady'
 type TokenRef = { token: string; refPath: string }
 
 async function sendJobAvailablePush(opts: {
@@ -514,5 +520,90 @@ export const notifyTradespeopleOnImagesReady = functions.region('europe-west3')
       logger.error('notifyTradespeopleOnImagesReady: failed', { message: err?.message })
     }
   })
+
+// --- 2nd gen replacements for the two triggers above -------------------------------------------
+//
+// A function cannot be moved from 1st to 2nd gen under the same name ("Upgrading from GCFv1 to
+// GCFv2 is not yet supported"), so these are deployed alongside the 1st gen pair and the old ones
+// are deleted only after the new pair is verified end to end. During that overlap every job
+// produces two pushes; that is expected and is the evidence that the new trigger works. Running
+// twice is safe: sendJobAvailablePush only reads, sends, and deletes already-invalid FCM tokens.
+//
+// Behaviour is carried over unchanged. The 1st gen `snap.id` / `change.after.id` become
+// `event.params.jobId`, which is the same value for a `jobs/{jobId}` document. `event.data` is
+// optional in 2nd gen, so each handler guards it before use.
+
+export const notifyOnJobCreated = onDocumentCreated(
+  { document: 'jobs/{jobId}', region: 'europe-west3' },
+  async (event) => {
+    const jobData = event.data?.data()
+    if (!jobData) {
+      logger.warn('notifyOnJobCreated: No job data found')
+      return
+    }
+
+    const specializationRequired = jobData.specializationRequired
+    if (!specializationRequired) {
+      logger.info('notifyOnJobCreated: Job without specializationRequired, skipping')
+      return
+    }
+    if (jobData.status && jobData.status !== 'pending') {
+      logger.info('notifyOnJobCreated: Job not pending, skipping', { status: jobData.status })
+      return
+    }
+    // Option B (robust): if the job is still uploading images, do NOT notify yet.
+    // We will notify on the first transition imagesReady: false -> true.
+    if (jobData.imagesReady === false) {
+      logger.info('notifyOnJobCreated: Job images not ready yet, skipping', { jobId: event.params.jobId })
+      return
+    }
+
+    try {
+      await sendJobAvailablePush({
+        event: 'notifyOnJobCreated',
+        jobId: event.params.jobId,
+        specializationRequired,
+        location: jobData.location
+      })
+    } catch (err: any) {
+      logger.error('notifyOnJobCreated: query failed', { message: err?.message })
+    }
+  }
+)
+
+// Why there are two entry points at all: a request submitted with photos is created with
+// `imagesReady: false` and deliberately does NOT notify anyone yet, because a tradesperson who
+// opens it before the uploads finish would see a job without its pictures. The upload flow flips
+// `imagesReady` to true afterwards, and this trigger is what notifies on that first transition.
+// A request without photos never sets the flag, so it is notified by notifyOnJobCreated instead
+// and never reaches this one. Every other document update is woken up here and filtered out below.
+export const notifyOnJobImagesReady = onDocumentUpdated(
+  { document: 'jobs/{jobId}', region: 'europe-west3' },
+  async (event) => {
+    const before = event.data?.before.data() as any
+    const after = event.data?.after.data() as any
+    if (!after) return
+
+    // Only notify once: first transition imagesReady false -> true
+    const wasReady = before?.imagesReady !== false
+    const isReady = after?.imagesReady !== false
+    if (wasReady || !isReady) return
+
+    const specializationRequired = after.specializationRequired
+    if (!specializationRequired) return
+    if (after.status && after.status !== 'pending') return
+
+    try {
+      await sendJobAvailablePush({
+        event: 'notifyOnJobImagesReady',
+        jobId: event.params.jobId,
+        specializationRequired,
+        location: after.location
+      })
+    } catch (err: any) {
+      logger.error('notifyOnJobImagesReady: failed', { message: err?.message })
+    }
+  }
+)
 
 
