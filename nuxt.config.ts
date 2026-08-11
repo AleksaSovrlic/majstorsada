@@ -66,7 +66,27 @@ export default defineNuxtConfig({
       gen: 2,
       httpsOptions: {
         region: 'europe-west3'
-      }
+      },
+      // The runtime for the SSR function. Without this the Firebase preset falls back to a
+      // hardcoded "20" of its own (nitropack/dist/presets/firebase/utils.mjs), so the version
+      // would live nowhere in this repo and changing `functions/package.json` alone would leave
+      // the SSR function behind.
+      //
+      // The runtime version lives in exactly two places, one per codebase:
+      //   - here, for the `nuxt-ssr` codebase
+      //   - functions/package.json `engines.node`, for the `api` codebase
+      // The toolchain version lives in one: `volta.node` in the root package.json, which
+      // functions/ and the generated .output/server/package.json inherit via `volta.extends`.
+      //
+      // ROLLING BACK: reverting both numbers to "20" and redeploying works only until
+      // 2026-10-30, when nodejs20 is decommissioned and firebase-tools' guardVersionSupport()
+      // starts throwing instead of warning. After that date the rollback target is 22, not 20.
+      //
+      // On the move to Node 24 we compared the generated SSR lockfile under npm 10.8.2 and
+      // npm 11.16.0 and found an identical tree. That measured structure, not behaviour: it
+      // says no new packages arrive with the newer tool, not that the existing ones behave the
+      // same on the newer runtime. Only a deploy shows that.
+      nodeVersion: '24'
     },
     prerender: {
       // Firebase Hosting can serve these as static files; keep crawlers fast and reduce SSR load.
@@ -111,6 +131,14 @@ export default defineNuxtConfig({
             nitro.logger.info(`SSR dependency "${name}" was untraced and unpinned - removed`)
           }
         }
+
+        // Volta resolves its toolchain from the nearest package.json, and this generated one has
+        // no pin of its own - so anyone running npm by hand in .output/server gets Volta's global
+        // default instead of the project's. `npm run` is unaffected because it puts the resolved
+        // node binary on PATH ahead of the shims, which is why deploys were always consistent and
+        // only manual invocations drifted. Inheriting keeps the version in the root package.json
+        // alone rather than repeating the number here.
+        pkg.volta = { extends: '../../package.json' }
 
         pkg.dependencies = deps
         writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8')

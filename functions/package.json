@@ -1,8 +1,12 @@
 {
   "name": "majstorsada-functions",
   "private": true,
+  "//engines": "Runtime for the `api` codebase. See nuxt.config.ts (nitro.firebase.nodeVersion) for where the other runtime lives and until when a rollback to 20 is possible.",
   "engines": {
-    "node": "20"
+    "node": "24"
+  },
+  "volta": {
+    "extends": "../package.json"
   },
   "main": "lib/index.js",
   "scripts": {
