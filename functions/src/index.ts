@@ -1,7 +1,5 @@
 import { HttpsError, onRequest } from 'firebase-functions/v2/https'
-import * as functions from 'firebase-functions/v1'
 import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore'
-// OBBRISANA LINIJA: import { region } from 'firebase-functions' <-- OVO JE PRAVILO PROBLEM
 import * as logger from 'firebase-functions/logger'
 import { initializeApp, cert, applicationDefault } from 'firebase-admin/app'
 import { FieldValue, getFirestore } from 'firebase-admin/firestore'
@@ -72,13 +70,8 @@ async function verifyBearer(req: any): Promise<{ uid: string; email?: string } |
   }
 }
 
-// The 2nd gen triggers log under their own names so that, while both generations are deployed
-// side by side, the logs show which one fired rather than two indistinguishable entries.
-type PushEventName =
-  | 'notifyTradespeople'
-  | 'notifyTradespeopleOnImagesReady'
-  | 'notifyOnJobCreated'
-  | 'notifyOnJobImagesReady'
+// Each trigger logs under its own name, so a push can be traced back to the trigger that sent it.
+type PushEventName = 'notifyOnJobCreated' | 'notifyOnJobImagesReady'
 type TokenRef = { token: string; refPath: string }
 
 async function sendJobAvailablePush(opts: {
@@ -453,85 +446,10 @@ export const updateTokensByAdmin = onRequest({ region: 'europe-west3' }, (req, r
   })
 })
 
-export const notifyTradespeople = functions.region('europe-west3')
-  .firestore
-  .document('jobs/{jobId}')
-  .onCreate(async (snap, context) => {
-    const jobData = snap.data()
-    if (!jobData) {
-      logger.warn('notifyTradespeople: No job data found')
-      return
-    }
-
-    const specializationRequired = jobData.specializationRequired
-    if (!specializationRequired) {
-      logger.info('notifyTradespeople: Job without specializationRequired, skipping')
-      return
-    }
-    if (jobData.status && jobData.status !== 'pending') {
-      logger.info('notifyTradespeople: Job not pending, skipping', { status: jobData.status })
-      return
-    }
-    // Option B (robust): if the job is still uploading images, do NOT notify yet.
-    // We will notify on the first transition imagesReady: false -> true.
-    if (jobData.imagesReady === false) {
-      logger.info('notifyTradespeople: Job images not ready yet, skipping', { jobId: snap.id })
-      return
-    }
-
-    try {
-      await sendJobAvailablePush({
-        event: 'notifyTradespeople',
-        jobId: snap.id,
-        specializationRequired,
-        location: jobData.location
-      })
-    } catch (err: any) {
-      logger.error('notifyTradespeople: query failed', { message: err?.message })
-    }
-  })
-
-export const notifyTradespeopleOnImagesReady = functions.region('europe-west3')
-  .firestore
-  .document('jobs/{jobId}')
-  .onUpdate(async (change, context) => {
-    const before = change.before.data() as any
-    const after = change.after.data() as any
-    if (!after) return
-
-    // Only notify once: first transition imagesReady false -> true
-    const wasReady = before?.imagesReady !== false
-    const isReady = after?.imagesReady !== false
-    if (wasReady || !isReady) return
-
-    const db = getFirestore()
-    const specializationRequired = after.specializationRequired
-    if (!specializationRequired) return
-    if (after.status && after.status !== 'pending') return
-
-    try {
-      await sendJobAvailablePush({
-        event: 'notifyTradespeopleOnImagesReady',
-        jobId: change.after.id,
-        specializationRequired,
-        location: after.location
-      })
-    } catch (err: any) {
-      logger.error('notifyTradespeopleOnImagesReady: failed', { message: err?.message })
-    }
-  })
-
-// --- 2nd gen replacements for the two triggers above -------------------------------------------
+// --- Firestore triggers ------------------------------------------------------------------------
 //
-// A function cannot be moved from 1st to 2nd gen under the same name ("Upgrading from GCFv1 to
-// GCFv2 is not yet supported"), so these are deployed alongside the 1st gen pair and the old ones
-// are deleted only after the new pair is verified end to end. During that overlap every job
-// produces two pushes; that is expected and is the evidence that the new trigger works. Running
-// twice is safe: sendJobAvailablePush only reads, sends, and deletes already-invalid FCM tokens.
-//
-// Behaviour is carried over unchanged. The 1st gen `snap.id` / `change.after.id` become
-// `event.params.jobId`, which is the same value for a `jobs/{jobId}` document. `event.data` is
-// optional in 2nd gen, so each handler guards it before use.
+// `event.data` is optional on a 2nd gen Firestore event, so each handler guards it before use, and
+// the document id comes from `event.params.jobId` rather than from the snapshot.
 
 export const notifyOnJobCreated = onDocumentCreated(
   { document: 'jobs/{jobId}', region: 'europe-west3' },
