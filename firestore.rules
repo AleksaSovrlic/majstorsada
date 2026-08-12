@@ -41,7 +41,52 @@ service cloud.firestore {
     // tradespeople
     match /tradespeople/{uid} {
       allow read: if isOwner(uid) || isAdmin();
-      allow create: if isOwner(uid) && isSupportedCity(request.resource.data.city);
+
+      // Registration is deliberately open to anyone, and a new tradesperson deliberately sees
+      // every job right away and manages their own availability. What gates them is tokens:
+      // accepting a job costs one, and tokens are only granted after the person phones us. That
+      // call IS the vetting. So `balanceTokens == 0` is not a billing control - it is the only
+      // human check that exists, and someone who writes their own tokens skips it entirely and
+      // turns up at a real client's home address.
+      //
+      // The key list is the exact payload of the single caller that can create here
+      // (app/pages/majstor/register.vue); every other write to this collection uses updateDoc and
+      // goes through the update rule. hasOnly is what actually closes the hole: without it the
+      // ratingSum / ratingCount / averageRating fields that `update` protects could simply be
+      // supplied at create time.
+      //
+      // Seven fields are copied into acceptedByTradespersonProfile and shown to the client when
+      // a job is accepted (functions/src/index.ts): displayName, phoneNumber, bio, avatarPath,
+      // avatarUpdatedAt, averageRating and ratingCount. Only the first two can be set here, and
+      // both are constrained below. The other five never reach this rule at all because hasOnly
+      // rejects them - which includes averageRating and ratingCount, the exact trust signals a
+      // fake tradesperson would want a client to see.
+      //
+      // The phone pattern is the plain E.164 envelope, not a country-specific check: it cannot
+      // reject anything libphonenumber-js emits, so it blocks garbage without duplicating -
+      // and undercutting - the client-side validation.
+      //
+      // NOTE: this rule is stricter than the registration form, which has no maxlength on the
+      // name field. An empty or over-long name currently surfaces as a raw permission error
+      // rather than a form message. To be fixed where the form is touched, not here.
+      //
+      // Deliberately NOT constrained: status (the owner flips it seconds later anyway),
+      // specialization (a wrong value only makes its owner invisible to every job), email (used
+      // in no authorization decision) and the timestamps (nothing orders by them yet).
+      allow create: if isOwner(uid)
+                    && request.resource.data.keys().hasOnly([
+                         "uid", "displayName", "phoneNumber", "email", "specialization",
+                         "city", "status", "balanceTokens", "createdAt", "updatedAt"
+                       ])
+                    && request.resource.data.uid == request.auth.uid
+                    && request.resource.data.balanceTokens == 0
+                    && isSupportedCity(request.resource.data.city)
+                    && request.resource.data.displayName is string
+                    && request.resource.data.displayName.size() >= 2
+                    && request.resource.data.displayName.size() <= 80
+                    && request.resource.data.phoneNumber is string
+                    && request.resource.data.phoneNumber.matches("^\\+[0-9]{8,15}$");
+
       allow update: if isOwner(uid) && isAllowedTradespersonOwnerUpdate(uid);
       allow delete: if false;
 
