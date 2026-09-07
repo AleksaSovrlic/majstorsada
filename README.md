@@ -139,7 +139,7 @@ Final product decisions, architecture choices, copy, code changes, and productio
 This project uses Volta to pin Node:
 
 ```text
-Node 20.19.0
+Node 24.18.0
 ```
 
 Install dependencies:
@@ -172,6 +172,37 @@ Build for production:
 npm run build
 ```
 
+## Security Regression Tests
+
+Install root and `functions` dependencies with `npm ci` and `npm --prefix functions ci`, then run:
+
+```bash
+npm run test:security
+```
+
+The command compiles the existing API and runs Node tests against Firestore and Storage
+emulators using only `demo-majstorsada-security`. It does not deploy, load Nuxt env
+files, or start notification triggers. No new test dependency is required.
+
+A Java runtime is required (verified with Java 17 and the locked Firebase CLI 14;
+use Java 21+ when upgrading the CLI). On Windows, the runner resolves the actual
+Java executable so the Oracle launcher cannot leave an orphan emulator process.
+Ports 8289, 9398, 4441 and 4541 must be free. The CLI manages emulator startup and
+shutdown; cached emulator binaries avoid a download after the first run.
+
+Tests refuse to initialize Firebase SDKs unless the demo project and both local
+emulator addresses match. Fixtures contain invented data and use the Admin SDK;
+Firestore rule tests exercise real client SDK writes with simulated identities.
+Storage tests cover upload authorization and metadata finalization. API tests invoke
+the compiled production handlers with simulated token verification and real local
+Firestore transactions, including concurrent acceptance and rating retries.
+
+This suite covers the first rules-hardening unit, not every security requirement.
+It does not verify browser UI, actual login, push delivery, deployed configuration,
+or production billing. Contact privacy, role isolation and acceptance eligibility
+need their own implementation and tests in the next unit. Passing tests do not
+change production; publish reviewed rules separately.
+
 ## Environment Variables
 
 Use `.env.example` as the local setup reference.
@@ -189,7 +220,7 @@ Local Firebase Admin service account files must remain local-only.
 
 ## Current Limitations
 
-- Automated test coverage is not yet included.
+- Security regression tests are included; browser and full authentication coverage are still pending.
 - Dependency and runtime maintenance is planned.
 - Matching, ranking, and analytics can be improved.
 - Operational verification processes need to keep evolving as the tradesperson network grows.

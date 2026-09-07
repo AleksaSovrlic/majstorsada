@@ -9,7 +9,8 @@
     "emulators:start": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$env:FUNCTIONS_DISCOVERY_TIMEOUT='60'; if (!(Test-Path '.output/server/index.mjs')) { npm run build; if ($LastExitCode -ne 0) { exit $LastExitCode } }; if (!(Test-Path '.output/server/node_modules/firebase-functions/package.json')) { cd .output/server; npm install --omit=dev; if ($LastExitCode -ne 0) { exit $LastExitCode }; cd ../.. }; npx firebase-tools emulators:start --project majstorsada-b2ad4 --only auth,firestore,functions,storage\"",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
-    "postinstall": "nuxt prepare"
+    "postinstall": "nuxt prepare",
+    "test:security": "npm --prefix functions run build && node tests/security/run.mjs"
   },
   "dependencies": {
     "@nuxtjs/robots": "^5.6.7",

@@ -121,7 +121,8 @@ service cloud.firestore {
     function isClientAttachingImagesToOwnPendingJob(jobId) {
       let old = resource.data;
       let neu = request.resource.data;
-      let changed = neu.diff(old).changedKeys();
+      // Include added and removed fields as well as changed values in the allowlist.
+      let changed = neu.diff(old).affectedKeys();
       // Only allow adding/updating imagePaths + imagesUpdatedAt (no other mutations).
       let onlyAllowed = changed.hasOnly(["imagePaths", "imagesUpdatedAt", "imagesReady"]);
       let ownerOk = isAuthenticated() && old.clientId == request.auth.uid;
@@ -154,7 +155,8 @@ service cloud.firestore {
     function isClientCancellingOwnPendingJob() {
       let old = resource.data;
       let neu = request.resource.data;
-      let changed = neu.diff(old).changedKeys();
+      // Include added and removed fields as well as changed values in the allowlist.
+      let changed = neu.diff(old).affectedKeys();
       // Allow ONLY a strict state transition: pending -> canceled, by the owner client,
       // and require canceledAt == request.time (serverTimestamp).
       return isAuthenticated()
@@ -173,7 +175,8 @@ service cloud.firestore {
       // - a function may have at most 10 `let` bindings
       let old = resource.data;
       let neu = request.resource.data;
-      let changed = neu.diff(old).changedKeys();
+      // Include added and removed fields as well as changed values in the allowlist.
+      let changed = neu.diff(old).affectedKeys();
 
       return !changed.hasAny(["balanceTokens", "ratingSum", "ratingCount", "averageRating"])
         && changed.hasOnly([
