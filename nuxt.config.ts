@@ -108,7 +108,7 @@ export default defineNuxtConfig({
       nitro.hooks.hook('compiled', () => {
         // Prerendering spins up a second Nitro instance with its own output dir and no
         // generated package.json. Only the real server build is ours to police.
-        if (nitro.options.preset === 'nitro-prerender') {
+        if (nitro.options.dev || nitro.options.preset === 'nitro-prerender') {
           return
         }
 
@@ -226,6 +226,7 @@ export default defineNuxtConfig({
     '/klijent/**': { robots: false },
     '/login': { robots: false },
     '/finishLogin': { robots: false },
+    '/account': { robots: false },
     '/zahtev': { robots: false },
     '/potvrda': { robots: false },
     // The four public pages carry no server data: their scripts hold only `definePageMeta`,

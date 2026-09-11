@@ -14,6 +14,7 @@ export default defineNuxtPlugin({
       }
     }
 
+    if (useRuntimeConfig().public.firebase.projectId.startsWith('demo-')) return fallbackProvide
     if (!('serviceWorker' in navigator)) return fallbackProvide
     const supported = await isSupported().catch(() => false)
     if (!supported) return fallbackProvide
@@ -53,9 +54,9 @@ export default defineNuxtPlugin({
           return null
         }
 
-        const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: swReg! })
-        if (!token) return null
         const uid = auth.currentUser.uid
+        const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: swReg! })
+        if (!token || auth.currentUser?.uid !== uid || auth.role !== 'tradesperson') return null
         const tokenId = btoa(token).replace(/\+/g, '-').replace(/\//g, '_')
         const { doc, setDoc, serverTimestamp, collection, query, where, getDocs, deleteDoc } = await import('firebase/firestore')
         const firestore = (nuxt as any).$firestore

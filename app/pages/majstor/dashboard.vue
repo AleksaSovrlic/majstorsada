@@ -156,7 +156,7 @@
                 <div class="rounded-2xl bg-slate-50 p-4 ring-1 ring-black/5">
                   <div class="text-xs text-slate-500">Kontakt</div>
                   <div class="font-semibold text-brand-navy">
-                    {{ j.contactPhone || '—' }}
+                    <JobContact :job-id="j.jobId" />
                   </div>
                 </div>
               </div>
@@ -283,7 +283,8 @@ function startJobsFeed() {
   const constraints: any[] = [
     where('status', '==', 'pending'),
     where('specializationRequired', '==', spec),
-    where('city', '==', city)
+    where('city', '==', city),
+    where('imagesReady', '==', true)
   ]
   const q = query(col, ...constraints)
   unsub = onSnapshot(q, (snap) => {
@@ -307,7 +308,7 @@ function startOwnedFeeds() {
   if (unsubCompleted) { unsubCompleted(); unsubCompleted = null }
   // Single owned feed: subscribe by owner, split by status client-side
   unsubActive = onSnapshot(
-    query(collection($firestore, 'jobs'), where('acceptedByTradespersonId', '==', uid)),
+    query(collection($firestore, 'jobs'), where('acceptedByTradespersonId', '==', uid), where('status', 'in', ['accepted', 'completed'])),
     (snap) => {
       const all = snap.docs.map((d) => ({ jobId: d.id, ...(d.data() as any) }))
       activeJobs.value = all.filter((j) => j.status === 'accepted')

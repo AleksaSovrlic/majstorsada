@@ -1,12 +1,13 @@
 <template>
   <NuxtLayout>
-    <NuxtPage />
+    <NuxtPage :page-key="pageKey" />
   </NuxtLayout>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { accountRoute, requiredRole } from '@/utils/accountRoute'
 
 const route = useRoute()
 const runtime = useRuntimeConfig()
@@ -25,18 +26,24 @@ useHead(() => ({
 
 const auth = useAuthStore()
 
-// Ensure role is resolved after Magic Link or new tab load, to keep header reactive
-onMounted(async () => {
-  if (typeof window === 'undefined') return
-  if (auth.currentUser && auth.role === 'unknown') {
-    try { await auth.resolveUserRole() } catch {}
+// Remount private views immediately on identity changes, including request drafts.
+const pageKey = (page: { path: string }) => page.path + (requiredRole(page.path) ? (auth.currentUser?.uid || 'guest') : '')
+async function syncSessionRoute() {
+  if (!import.meta.client) return
+  const uid = auth.currentUser?.uid
+  const expected = requiredRole(route.path)
+  if (!uid) {
+    if (expected) await navigateTo(expected === 'tradesperson' ? '/majstor/login' : expected === 'admin' ? '/admin/login' : '/login')
+    return
   }
-})
-
-watch(() => auth.currentUser?.uid, async () => {
-  if (typeof window === 'undefined') return
-  if (auth.currentUser && auth.role === 'unknown') {
-    try { await auth.resolveUserRole() } catch {}
+  try {
+    const role = await auth.resolveUserRole()
+    if (uid !== auth.currentUser?.uid) return
+    if (expected && role !== expected) await navigateTo(accountRoute(role))
+  } catch {
+    if (uid === auth.currentUser?.uid && expected) await navigateTo('/account')
   }
-})
+}
+onMounted(syncSessionRoute)
+watch(() => auth.currentUser?.uid, syncSessionRoute)
 </script>

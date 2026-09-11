@@ -45,7 +45,7 @@
               </td>
               <td class="p-3">{{ j.problemDescription || '—' }}</td>
               <td class="p-3">{{ j.location || '—' }}</td>
-              <td class="p-3">{{ j.contactPhone || '—' }}</td>
+              <td class="p-3"><JobContact :job-id="j.jobId" /></td>
             </tr>
             <tr v-if="jobs.length === 0">
               <td colspan="5" class="p-6 text-center text-gray-500">Nema poslova.</td>

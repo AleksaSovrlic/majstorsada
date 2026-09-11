@@ -1,77 +1,19 @@
 import { defineStore } from 'pinia'
-import { GeoPoint, addDoc, collection, serverTimestamp } from 'firebase/firestore'
-import { getAuth } from 'firebase/auth'
-import { geohashForLocation } from 'geofire-common'
-import { isWithinBelgradeBbox } from '@/utils/geofence'
-import { DEFAULT_CITY } from '@/utils/cities'
-
+import { useApi } from '@/utils/api'
 interface CreateJobInput {
+  requestId: string
   problemDescription: string
   address: string
   coordinates: { lat: number; lng: number }
   city: string | null
   contactPhone: string
-  imageUrl?: string
-  imagesReady?: boolean
   specializationRequired: string
+  photoCount: number
 }
-
-export const useJobStore = defineStore('job', {
-  actions: {
-    async createJob(input: CreateJobInput) {
-      const { $firestore, $firebaseApp } = useNuxtApp()
-      const jobsCol = collection($firestore, 'jobs')
-      const auth = getAuth($firebaseApp)
-      const currentUser = auth.currentUser
-      if (!currentUser) {
-        throw new Error('Morate biti prijavljeni da biste poslali zahtev.')
-      }
-
-      const address = (input.address || '').trim()
-      const lat = Number(input.coordinates?.lat)
-      const lng = Number(input.coordinates?.lng)
-      if (!address) {
-        throw new Error('Molimo izaberite adresu iz liste.')
-      }
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-        throw new Error('Molimo izaberite adresu iz liste (nedostaju koordinate).')
-      }
-      if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-        throw new Error('Koordinate adrese nisu validne.')
-      }
-      if (!isWithinBelgradeBbox(lat, lng)) {
-        throw new Error('Trenutno primamo zahteve samo na širem području Beograda.')
-      }
-
-      // Canonical city:
-      // Do NOT trust Mapbox city strings ("Belgrade", "Grad Beograd", municipality names, etc.).
-      // Instead, rely on our hard geofence: if within Belgrade bbox, force city = "Beograd".
-      const city = DEFAULT_CITY
-      const geoPoint = new GeoPoint(lat, lng)
-      const geohash = geohashForLocation([lat, lng])
-      const payload = {
-        problemDescription: input.problemDescription,
-        // Backwards-compat: keep legacy `location` populated for existing UI and notifications.
-        location: address,
-        address,
-        city,
-        coordinates: geoPoint,
-        geohash,
-        contactPhone: input.contactPhone,
-        imageUrl: input.imageUrl || null,
-        // Option B (robust): if images are being uploaded, we create the job with imagesReady=false.
-        // Tradespeople notifications and feed display will wait until it flips to true.
-        imagesReady: input.imagesReady === false ? false : true,
-        specializationRequired: input.specializationRequired,
-        clientId: currentUser.uid,
-        clientEmail: currentUser.email || '',
-        status: 'pending',
-        createdAt: serverTimestamp()
-      }
-      const docRef = await addDoc(jobsCol, payload)
-      return { jobId: docRef.id }
-    }
+export const useJobStore = defineStore('job', () => {
+  const api = useApi()
+  async function createJob(input: CreateJobInput) {
+    return api<{ jobId: string; imagesReady: boolean; replayed: boolean }>('createJob', { ...input, city: 'Beograd' })
   }
+  return { createJob }
 })
-
-

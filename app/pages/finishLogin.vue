@@ -96,6 +96,8 @@
               </p>
 
               <div class="mt-6">
+                <NuxtLink v-if="authStore.currentUser" to="/account" class="block mb-4 font-bold underline">Dovrši prijavu bez novog linka</NuxtLink>
+                <NuxtLink v-if="authStore.currentUser" to="/account" class="block mb-4 font-bold underline">Dovrši prijavu bez novog linka</NuxtLink>
                 <NuxtLink
                   :to="loginHref"
                   class="w-full inline-flex items-center justify-center rounded-xl bg-brand-blue text-white font-bold h-12 shadow-lg shadow-blue-500/25 hover:bg-brand-blue-dark active:scale-[0.99] transition-all"
@@ -127,6 +129,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { isSignInWithEmailLink, signInWithEmailLink } from 'firebase/auth'
 import { useAuthStore } from '@/stores/auth'
 import { ensureClientProfile } from '@/utils/clients'
+import { accountRoute } from '@/utils/accountRoute'
 
 definePageMeta({ layout: 'public' })
 
@@ -150,7 +153,8 @@ onMounted(async () => {
 
   // If already logged in, redirect immediately
   if (authStore.currentUser) {
-    redirectAfter()
+    try { await ensureClientProfile(); await redirectAfter() }
+    catch (e: any) { errorMsg.value = e.message; uiState.value = 'error' }
     return
   }
 
@@ -185,7 +189,7 @@ async function completeSignIn() {
     await ensureClientProfile(cred.user.uid, cred.user.email || email.value)
     // Ensure auth.currentUser is available before redirect
     await authStore.ensureAuthReady()
-    redirectAfter()
+    await redirectAfter()
   } catch (e: any) {
     if (e?.code === 'auth/invalid-action-code') {
       errorMsg.value = 'Link je istekao ili je već iskorišćen.'
@@ -202,15 +206,12 @@ async function completeSignIn() {
   }
 }
 
-function redirectAfter() {
+async function redirectAfter() {
+  const role = await authStore.resolveUserRole()
   // Prefer explicit `from` param; fall back to encoded `continueUrl` if Firebase action links land on `/`
   // and finally to sessionStorage/default.
   const safeReplace = (target: string) => {
-    // Prevent open redirects; allow only app-internal paths.
-    if (target.startsWith('/') && !target.startsWith('//')) {
-      return router.replace(target)
-    }
-    return router.replace('/zahtev')
+    return router.replace(accountRoute(role, target))
   }
 
   const explicitFrom = route.query.from
@@ -244,7 +245,7 @@ function redirectAfter() {
 }
 
 const loginHref = computed(() => {
-  const from = (route.query.from as string) || sessionStorage.getItem('postAuthRedirect') || '/zahtev'
+  const from = (route.query.from as string) || (import.meta.client ? sessionStorage.getItem('postAuthRedirect') : null) || '/zahtev'
   return `/login?from=${encodeURIComponent(from)}`
 })
 </script>

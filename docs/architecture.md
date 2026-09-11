@@ -132,3 +132,7 @@ This avoids deploying stale or incomplete SSR artifacts after a failed build or 
 Firebase is used to move quickly with managed infrastructure while keeping the system production-deployable. Nuxt SSR supports SEO for public acquisition pages, and Firestore fits the request/job state workflow.
 
 As the product grows, the next engineering priorities are stronger matching and ranking, better monitoring, automated tests, analytics, and continued dependency/runtime maintenance.
+
+## Account and Job Authorization
+
+Role creation, job creation, acceptance and image publication are server-owned. Client contact is separate from feed data. Published job photos are served by an authenticated us-central1 function alongside the existing bucket; other functions remain in europe-west3. See [security boundaries](security-boundaries.md), [Blaze model](blaze-model.md), and the required [first release procedure](phase2-release.md).

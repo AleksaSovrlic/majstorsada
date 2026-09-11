@@ -1,211 +1,67 @@
-// Firestore Security Rules - MajstorSada (Production-ready)
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    function isAuthenticated() { return request.auth != null; }
-    function isAdmin() { return isAuthenticated() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)); }
-    function isOwner(uid) { return isAuthenticated() && request.auth.uid == uid; }
-    function isTradespersonUser() { return isAuthenticated() && exists(/databases/$(database)/documents/tradespeople/$(request.auth.uid)); }
-    function userSpecialization() { return isTradespersonUser() ? get(/databases/$(database)/documents/tradespeople/$(request.auth.uid)).data.specialization : null; }
-    function isSupportedCity(city) { return city == "Beograd"; }
-    function userCity() {
-      // NOTE: Firestore Rules do NOT support JS-style `if (...) return ...;` statements.
-      // Keep it expression-based and safe.
-      return isTradespersonUser()
-        // Silent fallback for legacy profiles without city: treat as "Beograd".
-        ? (("city" in get(/databases/$(database)/documents/tradespeople/$(request.auth.uid)).data)
-            && get(/databases/$(database)/documents/tradespeople/$(request.auth.uid)).data.city != null
-            ? get(/databases/$(database)/documents/tradespeople/$(request.auth.uid)).data.city
-            : "Beograd")
-        : null;
+    function signedIn() { return request.auth != null; }
+    function owner(uid) { return signedIn() && request.auth.uid == uid; }
+    function admin() { return signedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)); }
+    function tradesperson() { return signedIn() && exists(/databases/$(database)/documents/tradespeople/$(request.auth.uid)); }
+    function matchesTrade(job) {
+      let tp = get(/databases/$(database)/documents/tradespeople/$(request.auth.uid)).data;
+      return job.city == 'Beograd' && (!('city' in tp) || tp.city == job.city)
+        && job.specializationRequired == tp.specialization;
     }
-
-    // Default deny
+    function assigned(job) {
+      return signedIn() && ('acceptedByTradespersonId' in job)
+        && job.acceptedByTradespersonId == request.auth.uid
+        && job.status in ['accepted', 'completed'];
+    }
     match /{document=**} { allow read, write: if false; }
-
-    // admins
-    match /admins/{uid} {
-      allow read: if isOwner(uid);
-      allow create, update, delete: if isAdmin();
-    }
-
-    // clients
-    match /clients/{uid} {
-      allow read: if isOwner(uid) || isAdmin();
-      allow create: if isOwner(uid);
-      allow update: if isOwner(uid);
-      allow delete: if false;
-    }
-
-    // tradespeople
+    // Profiles are created atomically by completeRegistration. No browser can
+    // create a second role or assign an administrator role, tokens or ratings.
+    match /admins/{uid} { allow read: if owner(uid); allow write: if false; }
+    match /clients/{uid} { allow read: if owner(uid) || admin(); allow write: if false; }
     match /tradespeople/{uid} {
-      allow read: if isOwner(uid) || isAdmin();
-
-      // Registration is deliberately open to anyone, and a new tradesperson deliberately sees
-      // every job right away and manages their own availability. What gates them is tokens:
-      // accepting a job costs one, and tokens are only granted after the person phones us. That
-      // call IS the vetting. So `balanceTokens == 0` is not a billing control - it is the only
-      // human check that exists, and someone who writes their own tokens skips it entirely and
-      // turns up at a real client's home address.
-      //
-      // The key list is the exact payload of the single caller that can create here
-      // (app/pages/majstor/register.vue); every other write to this collection uses updateDoc and
-      // goes through the update rule. hasOnly is what actually closes the hole: without it the
-      // ratingSum / ratingCount / averageRating fields that `update` protects could simply be
-      // supplied at create time.
-      //
-      // Seven fields are copied into acceptedByTradespersonProfile and shown to the client when
-      // a job is accepted (functions/src/index.ts): displayName, phoneNumber, bio, avatarPath,
-      // avatarUpdatedAt, averageRating and ratingCount. Only the first two can be set here, and
-      // both are constrained below. The other five never reach this rule at all because hasOnly
-      // rejects them - which includes averageRating and ratingCount, the exact trust signals a
-      // fake tradesperson would want a client to see.
-      //
-      // The phone pattern is the plain E.164 envelope, not a country-specific check: it cannot
-      // reject anything libphonenumber-js emits, so it blocks garbage without duplicating -
-      // and undercutting - the client-side validation.
-      //
-      // NOTE: this rule is stricter than the registration form, which has no maxlength on the
-      // name field. An empty or over-long name currently surfaces as a raw permission error
-      // rather than a form message. To be fixed where the form is touched, not here.
-      //
-      // Deliberately NOT constrained: status (the owner flips it seconds later anyway),
-      // specialization (a wrong value only makes its owner invisible to every job), email (used
-      // in no authorization decision) and the timestamps (nothing orders by them yet).
-      allow create: if isOwner(uid)
-                    && request.resource.data.keys().hasOnly([
-                         "uid", "displayName", "phoneNumber", "email", "specialization",
-                         "city", "status", "balanceTokens", "createdAt", "updatedAt"
-                       ])
-                    && request.resource.data.uid == request.auth.uid
-                    && request.resource.data.balanceTokens == 0
-                    && isSupportedCity(request.resource.data.city)
-                    && request.resource.data.displayName is string
-                    && request.resource.data.displayName.size() >= 2
-                    && request.resource.data.displayName.size() <= 80
-                    && request.resource.data.phoneNumber is string
-                    && request.resource.data.phoneNumber.matches("^\\+[0-9]{8,15}$");
-
-      allow update: if isOwner(uid) && isAllowedTradespersonOwnerUpdate(uid);
-      allow delete: if false;
-
-      match /fcmTokens/{tokenId} {
-        allow read, create, update, delete: if isOwner(uid);
+      allow read: if owner(uid) || admin();
+      allow create, delete: if false;
+      allow update: if owner(uid) && allowedProfileUpdate(uid);
+      match /fcmTokens/{tokenId} { allow read, write: if owner(uid) && tradesperson(); }
+    }
+    match /jobs/{jobId} {
+      allow create, delete: if false;
+      allow read: if (signedIn() && resource.data.clientId == request.auth.uid)
+        || assigned(resource.data) || admin()
+        || (tradesperson() && resource.data.status == 'pending'
+          && resource.data.imagesReady == true && matchesTrade(resource.data));
+      allow update: if signedIn() && resource.data.clientId == request.auth.uid
+        && resource.data.status == 'pending' && !('acceptedByTradespersonId' in resource.data)
+        && (!('imageFinalizationSlots' in resource.data) || resource.data.imagesReady == true)
+        && request.resource.data.status == 'canceled'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'canceledAt'])
+        && request.resource.data.canceledAt == request.time;
+      match /private/contact {
+        allow get: if signedIn() && canReadContact(jobId);
+        allow list, write: if false;
       }
     }
-
-    // jobs
-    match /jobs/{jobId} {
-      allow create: if isAuthenticated()
-                    && request.resource.data.clientId == request.auth.uid
-                    && request.resource.data.status == "pending"
-                    && isSupportedCity(request.resource.data.city)
-                    && !("acceptedByTradespersonId" in request.resource.data);
-
-      allow read: if isAdmin()
-                  || (isAuthenticated() && resource.data.clientId == request.auth.uid)
-                  || (isTradespersonUser() && (
-                        (resource.data.status == "pending"
-                          && resource.data.specializationRequired == userSpecialization()
-                          && isSupportedCity(resource.data.city)
-                          && resource.data.city == userCity())
-                        || (resource.data.acceptedByTradespersonId == request.auth.uid)
-                     ));
-
-      allow update: if isClientCancellingOwnPendingJob()
-                    || isClientAttachingImagesToOwnPendingJob(jobId);
-      allow delete: if false;
+    function canReadContact(jobId) {
+      let job = get(/databases/$(database)/documents/jobs/$(jobId)).data;
+      return job.clientId == request.auth.uid || assigned(job) || admin();
     }
-
-    function isClientAttachingImagesToOwnPendingJob(jobId) {
-      let old = resource.data;
+    function allowedProfileUpdate(uid) {
       let neu = request.resource.data;
-      // Include added and removed fields as well as changed values in the allowlist.
-      let changed = neu.diff(old).affectedKeys();
-      // Only allow adding/updating imagePaths + imagesUpdatedAt (no other mutations).
-      let onlyAllowed = changed.hasOnly(["imagePaths", "imagesUpdatedAt", "imagesReady"]);
-      let ownerOk = isAuthenticated() && old.clientId == request.auth.uid;
-      let statusOk = old.status == "pending" && neu.status == old.status;
-      let notAccepted = !("acceptedByTradespersonId" in old);
-
-      let pathsOk =
-        ("imagePaths" in neu)
-        && (neu.imagePaths is list)
-        && (neu.imagePaths.size() <= 3)
-        // Validate each element (no loops in rules, so do it by index).
-        && (neu.imagePaths.size() == 0
-            || (neu.imagePaths[0] is string && neu.imagePaths[0].matches("^jobs/" + jobId + "/[^/]+$")))
-        && (neu.imagePaths.size() <= 1
-            || (neu.imagePaths[1] is string && neu.imagePaths[1].matches("^jobs/" + jobId + "/[^/]+$")))
-        && (neu.imagePaths.size() <= 2
-            || (neu.imagePaths[2] is string && neu.imagePaths[2].matches("^jobs/" + jobId + "/[^/]+$")));
-
-      // Require serverTimestamp to prevent client forging arbitrary times.
-      let updatedAtOk = ("imagesUpdatedAt" in neu) && neu.imagesUpdatedAt == request.time;
-      let readyOk =
-        ("imagesReady" in neu)
-        && (neu.imagesReady is bool)
-        // Disallow true -> false (monotonic)
-        && (!("imagesReady" in old) || old.imagesReady != true || neu.imagesReady == true);
-
-      return onlyAllowed && ownerOk && statusOk && notAccepted && pathsOk && updatedAtOk && readyOk;
-    }
-
-    function isClientCancellingOwnPendingJob() {
-      let old = resource.data;
-      let neu = request.resource.data;
-      // Include added and removed fields as well as changed values in the allowlist.
-      let changed = neu.diff(old).affectedKeys();
-      // Allow ONLY a strict state transition: pending -> canceled, by the owner client,
-      // and require canceledAt == request.time (serverTimestamp).
-      return isAuthenticated()
-        && old.clientId == request.auth.uid
-        && old.status == "pending"
-        && neu.status == "canceled"
-        && !("acceptedByTradespersonId" in old)
-        && changed.hasOnly(["status", "canceledAt"])
-        && ("canceledAt" in neu)
-        && neu.canceledAt == request.time;
-    }
-
-    function isAllowedTradespersonOwnerUpdate(uid) {
-      // NOTE: Firestore Rules have two important limitations:
-      // - path wildcards (like {uid}) are NOT available unless passed in or defined in scope
-      // - a function may have at most 10 `let` bindings
-      let old = resource.data;
-      let neu = request.resource.data;
-      // Include added and removed fields as well as changed values in the allowlist.
-      let changed = neu.diff(old).affectedKeys();
-
-      return !changed.hasAny(["balanceTokens", "ratingSum", "ratingCount", "averageRating"])
-        && changed.hasOnly([
-          "status",
-          "dismissedJobs",
-          "displayName",
-          "phoneNumber",
-          "specialization",
-          "city",
-          "notificationPreference",
-          // Profile fields
-          "bio",
-          "avatarPath",
-          "avatarUpdatedAt"
-        ])
-        // Eksplicitna validacija status vrednosti (bez 'in' nad listom)
-        && (!("status" in neu) || (neu.status == "available" || neu.status == "unavailable"))
-        && (!("city" in neu) || isSupportedCity(neu.city))
-        // Validate profile fields ONLY when they are being changed (request.resource.data contains the full resulting doc).
-        && (!changed.hasAny(["bio"]) || neu.bio == null || (neu.bio is string && neu.bio.size() <= 500))
-        && (!changed.hasAny(["avatarPath"]) || neu.avatarPath == null || (neu.avatarPath is string && neu.avatarPath.matches("^avatars/" + uid + "/profile\\.jpg$")))
-        // If avatarPath changes, avatarUpdatedAt must also change (cache bust + strong audit)
-        && (!changed.hasAny(["avatarPath"]) || changed.hasAny(["avatarUpdatedAt"]))
-        // Require serverTimestamp for avatarUpdatedAt ONLY when it is being changed
-        && (!changed.hasAny(["avatarUpdatedAt"]) || (neu.avatarUpdatedAt == request.time))
-        // Bez lambda/iteracija: tip liste + gornja granica veličine; dozvoli null
-        && (!("dismissedJobs" in neu) || (neu.dismissedJobs == null) || (neu.dismissedJobs is list && neu.dismissedJobs.size() <= 200));
+      let changed = neu.diff(resource.data).affectedKeys();
+      return changed.hasOnly(['status', 'dismissedJobs', 'displayName', 'phoneNumber', 'specialization', 'city', 'notificationPreference', 'bio', 'avatarPath', 'avatarUpdatedAt'])
+        && neu.status in ['available', 'unavailable']
+        && (!('city' in neu) || neu.city == 'Beograd')
+        && neu.specialization in ['vodoinstalater', 'električar', 'bravar']
+        && neu.displayName is string && neu.displayName.size() >= 2 && neu.displayName.size() <= 80
+        && neu.phoneNumber is string && neu.phoneNumber.matches('^\\+[0-9]{8,15}$')
+        && (!changed.hasAny(['notificationPreference']) || neu.notificationPreference in ['push', 'viber', 'sms'])
+        && (!changed.hasAny(['bio']) || neu.bio == null || (neu.bio is string && neu.bio.size() <= 500))
+        && (!changed.hasAny(['avatarPath']) || neu.avatarPath == null || (neu.avatarPath is string && neu.avatarPath.matches('^avatars/' + uid + '/profile\\.jpg$')))
+        && (!changed.hasAny(['avatarPath']) || changed.hasAny(['avatarUpdatedAt']))
+        && (!changed.hasAny(['avatarUpdatedAt']) || neu.avatarUpdatedAt == request.time)
+        && (!('dismissedJobs' in neu) || neu.dismissedJobs == null || (neu.dismissedJobs is list && neu.dismissedJobs.size() <= 200));
     }
   }
 }
-
-

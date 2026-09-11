@@ -197,11 +197,15 @@ Storage tests cover upload authorization and metadata finalization. API tests in
 the compiled production handlers with simulated token verification and real local
 Firestore transactions, including concurrent acceptance and rating retries.
 
-This suite covers the first rules-hardening unit, not every security requirement.
-It does not verify browser UI, actual login, push delivery, deployed configuration,
-or production billing. Contact privacy, role isolation and acceptance eligibility
-need their own implementation and tests in the next unit. Passing tests do not
-change production; publish reviewed rules separately.
+The suite covers protected-field regressions, exclusive roles, private contacts,
+server-owned job creation, retry-safe acceptance and authenticated photos.
+[Browser checks](tests/e2e/README.md) additionally exercise real emulator Auth and
+frontend recovery from interrupted requests. Neither suite verifies production
+IAM, push delivery or billing.
+
+The [release procedure and production verification](docs/phase2-release.md) document the coordinated rollout.
+See [security boundaries](docs/security-boundaries.md) and the
+[Blaze model](docs/blaze-model.md) for operational trade-offs.
 
 ## Environment Variables
 
@@ -220,16 +224,18 @@ Local Firebase Admin service account files must remain local-only.
 
 ## Current Limitations
 
-- Security regression tests are included; browser and full authentication coverage are still pending.
+- Security and browser regression suites cover account and job workflows. Real email-link delivery and device push notifications still require manual checks.
 - Dependency and runtime maintenance is planned.
 - Matching, ranking, and analytics can be improved.
 - Operational verification processes need to keep evolving as the tradesperson network grows.
 
 ## Roadmap
 
+See the [pre-marketing plan](docs/pre-marketing-plan.md) for completed work and the proposed remaining work packages.
+
 - Improve request matching and ranking.
 - Add analytics and conversion tracking.
 - Expand operational dashboards.
-- Add automated smoke tests.
+- Integrate the existing automated smoke tests into continuous integration.
 - Continue dependency and Firebase runtime maintenance.
 - Add more service and location landing pages.

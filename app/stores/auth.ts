@@ -1,118 +1,75 @@
 import { defineStore } from 'pinia'
-import type { User } from 'firebase/auth'
-import { onAuthStateChanged, signInWithEmailAndPassword, signOut as firebaseSignOut } from 'firebase/auth'
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut as firebaseSignOut, type User } from 'firebase/auth'
+import { useApi } from '@/utils/api'
+import type { AccountRole } from '@/utils/accountRoute'
+import { useTradespersonStore } from '@/stores/tradesperson'
 
-interface AuthState {
-  currentUser: User | null
-  isInitialized: boolean
-  _initPromise: Promise<void> | null
-  role: 'admin' | 'tradesperson' | 'client' | 'unknown'
-  _lastRoleUid: string | null
-}
-
-export const useAuthStore = defineStore('auth', {
-  state: (): AuthState => ({
-    currentUser: null,
-    isInitialized: false,
-    _initPromise: null,
-    role: 'unknown',
-    _lastRoleUid: null
-  }),
-  actions: {
-    ensureAuthReady(): Promise<void> {
-      if (this.isInitialized && this._initPromise == null) {
-        return Promise.resolve()
-      }
-      if (this._initPromise) {
-        return this._initPromise
-      }
-      const { $firebaseAuth } = useNuxtApp()
-      this._initPromise = (async () => {
-        // Wait for initial auth state to load from persistence (multi-tab safe)
-        if (typeof ($firebaseAuth as any).authStateReady === 'function') {
-          await ($firebaseAuth as any).authStateReady()
-        } else {
-          // Fallback: wait one onAuthStateChanged tick
-          await new Promise<void>((resolve) => {
-            const unsub = onAuthStateChanged($firebaseAuth, () => {
-              unsub()
-              resolve()
-            })
-          })
-        }
-        this.currentUser = $firebaseAuth.currentUser
-        this.isInitialized = true
-        // Attach a persistent listener to keep currentUser in sync
-        if (!(this as any)._listenerAttached) {
-          onAuthStateChanged($firebaseAuth, (user) => {
-            this.currentUser = user
-          })
-          ;(this as any)._listenerAttached = true
-        }
-        this._initPromise = null
-      })()
-      return this._initPromise
-    },
-    async resolveUserRole(): Promise<'admin' | 'tradesperson' | 'client' | 'unknown'> {
-      const uid = this.currentUser?.uid || null
-      if (!uid) {
-        this.role = 'unknown'
-        this._lastRoleUid = null
-        return this.role
-      }
-      if (this._lastRoleUid === uid && this.role !== 'unknown') {
-        return this.role
-      }
-      try {
-        const { $firestore } = useNuxtApp()
-        const { doc, getDoc } = await import('firebase/firestore')
-        // 1) Admin has precedence
-        const adminDoc = await getDoc(doc($firestore, 'admins', uid))
-        if (adminDoc.exists()) {
-          this.role = 'admin'
-          this._lastRoleUid = uid
-          return this.role
-        }
-        // 2) Tradesperson next
-        const tpDoc = await getDoc(doc($firestore, 'tradespeople', uid))
-        if (tpDoc.exists()) {
-          this.role = 'tradesperson'
-          this._lastRoleUid = uid
-          return this.role
-        }
-        // 3) Default to client in all other cases
-        this.role = 'client'
-        this._lastRoleUid = uid
-        return this.role
-      } catch (e) {
-        console.warn('[auth] resolveUserRole failed', e)
-        // Fallback: logged-in users are treated as clients; logged-out handled above
-        this.role = uid ? 'client' : 'unknown'
-        this._lastRoleUid = uid
-        return this.role
-      }
-    },
-    async signIn(email: string, password: string): Promise<void> {
-      const { $firebaseAuth } = useNuxtApp()
-      const cred = await signInWithEmailAndPassword($firebaseAuth, email, password)
-      this.currentUser = cred.user
-      await this.resolveUserRole().catch(() => {})
-      try {
-        const { useTradespersonStore } = await import('@/stores/tradesperson')
-        const tp = useTradespersonStore()
-        tp.loadProfile(cred.user.uid)
-      } catch (e) {
-        console.warn('[auth] Failed to load tradesperson profile after login', e)
-      }
-    },
-    async signOut(): Promise<void> {
-      const { $firebaseAuth } = useNuxtApp()
-      await firebaseSignOut($firebaseAuth)
-      this.currentUser = null
-      this.role = 'unknown'
-      this._lastRoleUid = null
+export const useAuthStore = defineStore('auth', () => {
+  const currentUser = shallowRef<User | null>(null)
+  const isInitialized = ref(false)
+  const role = ref<AccountRole>('unknown')
+  let initPromise: Promise<void> | null = null
+  let rolePromise: Promise<AccountRole> | null = null
+  let roleUid: string | null = null
+  const api = useApi()
+  const { $firebaseAuth } = useNuxtApp()
+  function setUser(user: User | null) {
+    if (currentUser.value?.uid !== user?.uid) {
+      const tp = useTradespersonStore()
+      tp.unsubscribe()
+      tp.profile = null
+      role.value = 'unknown'
+      roleUid = null
+      rolePromise = null
     }
+    currentUser.value = user
   }
+  function ensureAuthReady(): Promise<void> {
+    if (isInitialized.value) return Promise.resolve()
+    if (!initPromise) initPromise = new Promise<void>((resolve) => {
+      onAuthStateChanged($firebaseAuth, user => {
+        setUser(user)
+        isInitialized.value = true
+        resolve()
+      })
+    })
+    return initPromise
+  }
+  async function resolveUserRole(force = false): Promise<AccountRole> {
+    await ensureAuthReady()
+    const user = $firebaseAuth.currentUser
+    setUser(user)
+    if (!user) return 'unknown'
+    if (!force && roleUid === user.uid && role.value !== 'unknown') return role.value
+    if (rolePromise) {
+      await rolePromise
+      if (!force) return role.value
+      if ($firebaseAuth.currentUser?.uid !== user.uid) throw new Error('Nalog je promenjen.')
+    }
+    const request = (async () => {
+      try {
+        const result = await api<{ role: AccountRole; refreshToken?: boolean }>('resolveAccount')
+        if (result.refreshToken) await user.getIdToken(true)
+        if ($firebaseAuth.currentUser?.uid !== user.uid) throw new Error('Nalog je promenjen.')
+        role.value = result.role
+        roleUid = user.uid
+        return result.role
+      } catch (error) {
+        if ($firebaseAuth.currentUser?.uid === user.uid) { role.value = 'unknown'; roleUid = null }
+        throw error
+      }
+    })()
+    rolePromise = request
+    try { return await request } finally { if (rolePromise === request) rolePromise = null }
+  }
+  async function signIn(email: string, password: string) {
+    const credential = await signInWithEmailAndPassword($firebaseAuth, email, password)
+    setUser(credential.user)
+    await resolveUserRole()
+  }
+  async function signOut() {
+    await firebaseSignOut($firebaseAuth)
+    setUser(null)
+  }
+  return { currentUser, isInitialized, role, ensureAuthReady, resolveUserRole, signIn, signOut }
 })
-
-

@@ -152,6 +152,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { sendSignInLinkToEmail } from 'firebase/auth'
 import { useAuthStore } from '@/stores/auth'
+import { accountRoute } from '@/utils/accountRoute'
 
 definePageMeta({ layout: 'public' })
 
@@ -201,7 +202,7 @@ onMounted(async () => {
   await authStore.ensureAuthReady()
   if (authStore.currentUser) {
     const from = (route.query.from as string) || sessionStorage.getItem('postAuthRedirect') || '/zahtev'
-    router.replace(from)
+    try { router.replace(accountRoute(await authStore.resolveUserRole(), from)) } catch { router.replace('/account') }
   }
 })
 

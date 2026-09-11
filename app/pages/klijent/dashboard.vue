@@ -32,7 +32,8 @@
                   {{ statusLabel(activeJob.status) }}
                 </span>
                 <span v-if="activeJob.status === 'pending'" class="text-sm text-slate-600">
-                  Majstori su obavešteni - čekamo prvog slobodnog.
+                  <template v-if="activeJob.imagesReady !== false">Zahtev je dostupan majstorima - čekamo prihvatanje.</template>
+                  <NuxtLink v-else :to="'/zahtev?resume=' + activeJob.jobId" class="font-bold underline">Dovršite slanje fotografija da majstori vide zahtev.</NuxtLink>
                 </span>
                 <span v-else-if="activeJob.status === 'accepted'" class="text-sm text-slate-600">
                   Majstor je prihvatio zahtev - očekujte poziv.
@@ -157,7 +158,7 @@
           <div v-if="activeJob.status === 'pending'" class="pt-1">
             <button
               class="w-full sm:w-auto sm:ml-auto inline-flex items-center justify-center rounded-xl border border-rose-200 bg-rose-50 text-rose-800 px-4 py-3 text-sm font-semibold hover:bg-rose-100 transition-transform active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed"
-              :disabled="isCanceling(activeJob.jobId)"
+              :disabled="isCanceling(activeJob.jobId) || (activeJob.imagesReady === false && !!activeJob.imageFinalizationSlots)"
               @click="cancelJob(activeJob.jobId)"
             >
               {{ isCanceling(activeJob.jobId) ? 'Otkazivanje…' : 'Otkaži zahtev' }}
@@ -224,14 +225,15 @@
             </div>
 
             <div v-else-if="j.status === 'pending'" class="mt-4 text-sm text-slate-700">
-              Majstori su obavešteni - čekamo prvog slobodnog.
+              <template v-if="j.imagesReady !== false">Zahtev je dostupan majstorima - čekamo prihvatanje.</template>
+              <NuxtLink v-else :to="'/zahtev?resume=' + j.jobId" class="font-bold underline">Dovršite slanje fotografija.</NuxtLink>
             </div>
 
             <div class="mt-4 flex items-center gap-2">
               <button
                 v-if="j.status === 'pending'"
                 class="inline-flex items-center justify-center rounded-xl border border-rose-200 bg-rose-50 text-rose-800 px-4 py-2 text-sm font-semibold hover:bg-rose-100 transition-transform active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed"
-                :disabled="isCanceling(j.jobId)"
+                :disabled="isCanceling(j.jobId) || (j.imagesReady === false && !!j.imageFinalizationSlots)"
                 @click="cancelJob(j.jobId)"
               >
                 {{ isCanceling(j.jobId) ? 'Otkazivanje…' : 'Otkaži' }}

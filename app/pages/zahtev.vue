@@ -7,6 +7,7 @@
       </p>
 
       <form class="mt-5 space-y-4" @submit.prevent="submit">
+        <fieldset class="space-y-4" :disabled="submitting || !!createdJobId || recovering">
         <div>
           <label class="block text-sm text-gray-700 mb-1">Vaš e-mail</label>
           <input
@@ -50,7 +51,7 @@
           <label class="block text-sm text-gray-700 mb-1">Kratak opis problema</label>
           <textarea
             v-model="problemDescription"
-            rows="4"
+            rows="4" minlength="3" maxlength="2000"
             required
             class="w-full bg-slate-50 border-0 focus:ring-2 focus:ring-[#1186dc] rounded-xl p-3 sm:p-4"
             placeholder="Npr: curi voda iz slavine, ventil ne zatvara..."
@@ -81,9 +82,11 @@
             {{ phoneValid ? 'Broj telefona je validan.' : 'Unesite ispravan broj telefona.' }}
           </p>
         </div>
+        </fieldset>
         <div>
           <label class="block text-sm text-gray-700 mb-1">Slike kvara (opciono, max 3)</label>
-          <input type="file" accept="image/*" multiple @change="onFiles" class="w-full text-sm text-gray-600" />
+          <p v-if="createdJobId" class="text-sm text-slate-600 mb-2">Zahtev je sačuvan. Dovršite fotografije ili objavite bez njih. {{ uploadedSlots.length }} fotografija je otpremljeno.</p>
+          <input :disabled="submitting || recovering || finalizationStarted" type="file" accept="image/*" multiple @change="onFiles" class="w-full text-sm text-gray-600" />
 
           <div v-if="selectedImages.length > 0" class="mt-3 grid grid-cols-3 gap-2">
             <div v-for="(img, idx) in selectedImages" :key="img.previewUrl" class="relative">
@@ -111,20 +114,21 @@
         <div class="sticky bottom-0 -mx-6 px-6 py-3 bg-white/90 backdrop-blur border-t border-slate-100 md:static md:mx-0 md:px-0 md:py-0 md:bg-transparent md:backdrop-blur-0 md:border-0">
           <button
             type="submit"
-            :disabled="submitting || !phoneValid || !specializationRequired || !selectedLocation"
+            :disabled="submitting || recovering || (!createdJobId && (!phoneValid || !specializationRequired || !selectedLocation))"
             class="w-full bg-[#1186dc] text-white font-bold py-4 md:py-3 rounded-xl shadow-lg md:shadow-md hover:bg-[#0f78c3] active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed transition-all inline-flex items-center justify-center gap-2"
           >
             <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
               <path d="M11 5l7 7-7 7M4 12h14" />
             </svg>
-            {{ submitting ? 'Slanje...' : 'Pronađi Majstora' }}
+            {{ submitting ? 'Slanje...' : createdJobId ? 'Dovrši slanje zahteva' : 'Pronađi Majstora' }}
           </button>
         </div>
         <button
           v-if="createdJobId"
           type="button"
           class="w-full bg-gray-100 hover:bg-gray-200 text-gray-900 font-medium px-6 py-3 rounded-lg shadow active:scale-[0.99]"
-          @click="router.push('/potvrda')"
+          :disabled="submitting || recovering"
+          @click="finishWithoutImages"
         >
           Nastavi bez slika
         </button>
@@ -142,6 +146,9 @@ import { useAuthStore } from '@/stores/auth'
 import { parsePhoneNumberFromString } from 'libphonenumber-js'
 import AppLocationInput, { type LocationSelection } from '@/components/AppLocationInput.vue'
 import { compressImageToJpeg } from '@/utils/imageCompression'
+import { useApi } from '@/utils/api'
+import { doc, getDocFromServer } from 'firebase/firestore'
+import { ref as storageRef, getMetadata, uploadBytesResumable } from 'firebase/storage'
 
 definePageMeta({
   middleware: ['client-auth']
@@ -150,13 +157,21 @@ definePageMeta({
 const route = useRoute()
 const router = useRouter()
 const jobStore = useJobStore()
+const api = useApi()
+const { $firestore, $storage } = useNuxtApp()
+const requestId = ref('')
+const photoCount = ref(0)
+const finalizationStarted = ref(false)
+const uploadedSlots = ref<number[]>([])
+const recovering = ref(true)
+const draftKey = () => 'job-draft:' + authStore.currentUser?.uid
 const authStore = useAuthStore()
 
 const problemDescription = ref('')
 const addressText = ref('')
 const selectedLocation = ref<LocationSelection | null>(null)
 const contactPhone = ref('')
-const selectedImages = ref<Array<{ file: File; previewUrl: string }>>([])
+const selectedImages = ref<Array<{ file: File; previewUrl: string; slot?: number }>>([])
 const specializationRequired = ref('')
 
 const submitting = ref(false)
@@ -188,14 +203,49 @@ function mapTipToSpecialization(tip: string): string | null {
   return null
 }
 
-onMounted(() => {
-  // Deep-link support: `/zahtev?tip=...` prefills specialization (without changing submit logic).
-  if (specializationRequired.value) return
-  const tip = route.query.tip
-  if (typeof tip !== 'string') return
-  const mapped = mapTipToSpecialization(tip)
-  if (mapped) specializationRequired.value = mapped
+onMounted(async () => {
+  try {
+    const tip = route.query.tip
+    if (typeof tip === 'string') specializationRequired.value = mapTipToSpecialization(tip) || ''
+    const saved = typeof route.query.resume === 'string' ? route.query.resume : localStorage.getItem(draftKey())
+    if (saved && /^[a-zA-Z0-9_-]{16,100}$/.test(saved)) {
+      requestId.value = saved
+      await recoverJob()
+    }
+  } catch (e: any) { errorMsg.value = 'Nastavak zahteva nije učitan. Osvežite stranicu kada se veza vrati. ' + (e.message || '') }
+  finally { recovering.value = false }
 })
+
+async function recoverJob() {
+  if (!requestId.value) return
+  const snap = await getDocFromServer(doc($firestore, 'jobs', requestId.value))
+  if (!snap.exists()) return
+  const job = snap.data()
+  if (job.clientId !== authStore.currentUser?.uid) throw new Error('Zahtev nije vaš.')
+  createdJobId.value = snap.id
+  if (job.imagesReady === true || job.status !== 'pending') {
+    localStorage.removeItem(draftKey())
+    await router.replace('/klijent/dashboard'); return
+  }
+  const contact = await getDocFromServer(doc($firestore, 'jobs', snap.id, 'private', 'contact'))
+  problemDescription.value = job.problemDescription
+  addressText.value = job.address
+  selectedLocation.value = { address: job.address, coordinates: { lat: job.coordinates.latitude, lng: job.coordinates.longitude }, city: job.city }
+  contactPhone.value = contact.data()?.contactPhone || ''
+  specializationRequired.value = job.specializationRequired
+  photoCount.value = job.photoCount
+  finalizationStarted.value = Array.isArray(job.imageFinalizationSlots)
+  await inspectUploads()
+}
+async function inspectUploads() {
+  uploadedSlots.value = []
+  for (let slot = 0; slot < photoCount.value; slot++) {
+    try {
+      await getMetadata(storageRef($storage, 'job-uploads/' + authStore.currentUser?.uid + '/' + createdJobId.value + '/' + slot + '.jpg'))
+      uploadedSlots.value.push(slot)
+    } catch (e: any) { if (e.code !== 'storage/object-not-found') throw e }
+  }
+}
 
 const specializationOptions = [
   {
@@ -249,10 +299,11 @@ function onFiles(e: Event) {
   input.value = ''
 
   for (const f of files) {
-    if (selectedImages.value.length >= MAX_IMAGES) break
+    if (selectedImages.value.length >= (createdJobId.value ? photoCount.value - uploadedSlots.value.length : MAX_IMAGES)) break
     if (!f.type || !f.type.startsWith('image/')) continue
     const previewUrl = URL.createObjectURL(f)
-    selectedImages.value.push({ file: f, previewUrl })
+    const slot = createdJobId.value ? Array.from({ length: photoCount.value }, (_, i) => i).find(i => !uploadedSlots.value.includes(i) && !selectedImages.value.some(image => image.slot === i)) : undefined
+    selectedImages.value.push({ file: f, previewUrl, slot })
   }
 }
 
@@ -270,124 +321,73 @@ onBeforeUnmount(() => {
   }
 })
 
+async function done() {
+  localStorage.removeItem(draftKey())
+  await router.push('/potvrda')
+}
 async function submit() {
-  errorMsg.value = ''
-  submitting.value = true
+  if (submitting.value) return
+  errorMsg.value = ''; submitting.value = true
   try {
-    if (!specializationRequired.value) {
-      throw new Error('Molimo izaberite tip majstora.')
-    }
-    if (!phoneValid.value) {
-      throw new Error('Molimo unesite ispravan broj telefona.')
-    }
-    if (!selectedLocation.value) {
-      throw new Error('Molimo izaberite adresu iz liste.')
-    }
-
-    // 1) Create the job first (we need jobId to namespace Storage paths).
-    let jobId = createdJobId.value
-    if (!jobId) {
-      const res = await jobStore.createJob({
-        problemDescription: problemDescription.value,
-        address: selectedLocation.value.address,
-        coordinates: selectedLocation.value.coordinates,
-        city: selectedLocation.value.city,
-        contactPhone: e164Phone.value,
-        specializationRequired: specializationRequired.value,
-        imagesReady: selectedImages.value.length === 0,
-        // legacy field (not used for new uploads)
-        imageUrl: undefined
+    if (!createdJobId.value) {
+      if (!specializationRequired.value || !phoneValid.value || !selectedLocation.value) throw new Error('Popunite opis, telefon i izaberite adresu iz liste.')
+      if (!requestId.value) requestId.value = crypto.randomUUID()
+      // Persist only an opaque ID. The backend owns the request and its contact.
+      localStorage.setItem(draftKey(), requestId.value)
+      photoCount.value = selectedImages.value.length
+      selectedImages.value.forEach((image, slot) => { image.slot = slot })
+      const result = await jobStore.createJob({
+        requestId: requestId.value, problemDescription: problemDescription.value,
+        address: selectedLocation.value.address, coordinates: selectedLocation.value.coordinates,
+        city: 'Beograd', contactPhone: e164Phone.value,
+        specializationRequired: specializationRequired.value, photoCount: photoCount.value
       })
-      jobId = res.jobId
-      createdJobId.value = jobId
+      createdJobId.value = result.jobId
+      if (result.imagesReady) { await done(); return }
     }
-
-    // 2) Upload images (optional)
-    if (selectedImages.value.length > 0) {
-      await uploadJobImages(jobId, selectedImages.value.map((x) => x.file))
-    }
-
-    router.push('/potvrda')
+    if (!finalizationStarted.value) await uploadJobImages()
+    await api('finalizeJobImages', { jobId: createdJobId.value, slots: uploadedSlots.value })
+    await done()
   } catch (e: any) {
-    errorMsg.value = e?.message || 'Greška pri slanju zahteva.'
-  } finally {
-    submitting.value = false
-  }
+    errorMsg.value = e?.message || 'Slanje nije dovršeno. Pokušajte ponovo; sačuvani zahtev se neće duplirati.'
+    // A lost create response must not strand a request. Recover the exact same ID.
+    if (requestId.value) {
+      try { await recoverJob() } catch { /* Keep ID for the next explicit retry. */ }
+    }
+  } finally { submitting.value = false }
 }
-
-function makeRandomId() {
-  // Short random id for filenames (non-crypto)
-  return Math.random().toString(16).slice(2) + Date.now().toString(16)
+async function finishWithoutImages() {
+  if (submitting.value || !createdJobId.value) return
+  submitting.value = true; errorMsg.value = ''
+  try { await api('finalizeJobImages', { jobId: createdJobId.value, slots: [] }); await done() }
+  catch (e: any) { errorMsg.value = e.message || 'Zahtev nije dovršen. Pokušajte ponovo.' }
+  finally { submitting.value = false }
 }
-
-async function uploadJobImages(jobId: string, files: File[]) {
-  uploading.value = true
-  uploadProgress.value = 0
-
-  const { $storage, $firestore } = useNuxtApp() as any
-  if (!$storage) {
-    throw new Error('Upload slika trenutno nije dostupan (Storage nije inicijalizovan).')
-  }
-
-  const { doc, updateDoc, serverTimestamp } = await import('firebase/firestore')
-  const { ref: storageRef, uploadBytesResumable } = await import('firebase/storage')
-
-  // Compress first (so progress is based on actual upload bytes)
-  const compressed = await Promise.all(
-    files.slice(0, MAX_IMAGES).map((f) => compressImageToJpeg(f, { maxSide: 1280, quality: 0.8 }))
-  )
-  const totalBytes = compressed.reduce((sum, c) => sum + (c.blob?.size || 0), 0) || 1
-
-  // Declare allowed Storage paths in Firestore first (Storage rules depend on this).
-  const names = compressed.map((_, idx) => `img-${idx + 1}-${makeRandomId()}.jpg`)
-  const imagePaths = names.map((n) => `jobs/${jobId}/${n}`)
-  const jobRef = doc($firestore, 'jobs', jobId)
-  await updateDoc(jobRef, { imagePaths, imagesReady: false, imagesUpdatedAt: serverTimestamp() })
-
-  const succeeded: string[] = []
-  let uploadedSoFar = 0
-
+async function uploadJobImages() {
+  uploading.value = true; uploadProgress.value = 0
   try {
-    // Upload sequentially for predictable progress and lower peak memory.
-    for (const [i, c] of compressed.entries()) {
-      const path = imagePaths[i]
-      if (!path) {
-        throw new Error('Greška pri uploadu slika (nedostaje putanja fajla).')
-      }
-      const blob = c.blob
+    await inspectUploads()
+    // A response may be lost after the upload succeeded. Keep each local file
+    // tied to its original slot, never shift it into the next missing slot.
+    for (const image of selectedImages.value) if (image.slot !== undefined && uploadedSlots.value.includes(image.slot)) URL.revokeObjectURL(image.previewUrl)
+    selectedImages.value = selectedImages.value.filter(image => image.slot !== undefined && !uploadedSlots.value.includes(image.slot))
+    const files = [...selectedImages.value]
+    // Use remaining selections for remaining slots after a reload. Already uploaded
+    // slots are immutable, so retries cannot replace photos another call published.
+    for (const [index, item] of files.entries()) {
+      const slot = item.slot!
+      const { blob } = await compressImageToJpeg(item.file, { maxSide: 1280, quality: 0.8 })
+      const path = 'job-uploads/' + authStore.currentUser?.uid + '/' + createdJobId.value + '/' + slot + '.jpg'
       const task = uploadBytesResumable(storageRef($storage, path), blob, { contentType: 'image/jpeg' })
-
-      await new Promise<void>((resolve, reject) => {
-        task.on(
-          'state_changed',
-          (snap) => {
-            const current = uploadedSoFar + snap.bytesTransferred
-            uploadProgress.value = Math.min(100, Math.round((current / totalBytes) * 100))
-          },
-          (err) => reject(err),
-          () => resolve()
-        )
-      })
-
-      uploadedSoFar += blob.size
-      succeeded.push(path)
-      uploadProgress.value = Math.min(100, Math.round((uploadedSoFar / totalBytes) * 100))
+      await new Promise<void>((resolve, reject) => task.on('state_changed', snap => {
+        uploadProgress.value = Math.round(((index + snap.bytesTransferred / snap.totalBytes) / files.length) * 100)
+      }, reject, resolve))
+      uploadedSlots.value.push(slot)
+      // Successful selections are removed so a retry associates only unuploaded files.
+      URL.revokeObjectURL(item.previewUrl)
+      selectedImages.value = selectedImages.value.filter(selected => selected !== item)
     }
-
-    // Mark images as ready only after all uploads completed.
-    await updateDoc(jobRef, { imagesReady: true, imagesUpdatedAt: serverTimestamp() })
-  } catch {
-    // Keep Firestore consistent with what was actually uploaded.
-    try {
-      await updateDoc(jobRef, { imagePaths: succeeded, imagesReady: true, imagesUpdatedAt: serverTimestamp() })
-    } catch {
-      // ignore secondary failure
-    }
-    throw new Error('Zahtev je poslat, ali upload slika nije uspeo. Pokušajte ponovo ili nastavite bez slika.')
-  } finally {
-    uploading.value = false
-  }
+    if (!uploadedSlots.value.length && photoCount.value > 0) throw new Error('Izaberite fotografije ponovo ili kliknite „Nastavi bez slika“.')
+  } finally { uploading.value = false }
 }
 </script>
-
-

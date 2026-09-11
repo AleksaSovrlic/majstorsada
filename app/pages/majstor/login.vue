@@ -106,6 +106,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { accountRoute } from '@/utils/accountRoute'
 
 definePageMeta({ layout: false })
 
@@ -129,7 +130,7 @@ async function submit() {
   try {
     await auth.signIn(email.value, password.value)
     successMsg.value = 'Uspešna prijava.'
-    router.push('/majstor/dashboard')
+    router.push(accountRoute(auth.role))
   } catch (e: any) {
     errorMsg.value = e?.message || 'Greška pri prijavi.'
   } finally {

@@ -1,21 +1,11 @@
-import { doc, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore'
-
-export async function ensureClientProfile(uid: string, email: string) {
-  const { $firestore } = useNuxtApp()
-  const ref = doc($firestore, 'clients', uid)
-  const snap = await getDoc(ref)
-  if (!snap.exists()) {
-    await setDoc(ref, {
-      email,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    })
-  } else {
-    await updateDoc(ref, {
-      email: email || snap.data()?.email || null,
-      updatedAt: serverTimestamp()
-    })
+import { useApi } from '@/utils/api'
+import { useAuthStore } from '@/stores/auth'
+export async function ensureClientProfile(_uid?: string, _email?: string) {
+  const auth = useAuthStore()
+  const api = useApi()
+  const role = await auth.resolveUserRole(true)
+  if (role === 'unregistered') {
+    await api('completeRegistration', { role: 'client' })
+    await auth.resolveUserRole(true)
   }
 }
-
-

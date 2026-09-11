@@ -20,11 +20,11 @@ async function pendingJob(extra = {}) {
 const imagePatch = id => ({ imagePaths: [`jobs/${id}/photo.jpg`], imagesReady: false, imagesUpdatedAt: serverTimestamp() })
 const cancelPatch = () => ({ status: 'canceled', canceledAt: serverTimestamp() })
 
-test('Registration: current valid payload creates a zero-token profile', async () => {
+test('Browser cannot create even a valid zero-token profile', async () => {
   const uid = 'registration-valid'
   const data = profile(uid, { createdAt: serverTimestamp(), updatedAt: serverTimestamp() })
-  await setDoc(doc(client(uid).db, 'tradespeople', uid), data, { merge: true })
-  assert.equal((await seedDb.doc(`tradespeople/${uid}`).get()).data().balanceTokens, 0)
+  await denied(setDoc(doc(client(uid).db, 'tradespeople', uid), data, { merge: true }))
+  assert.equal((await seedDb.doc(`tradespeople/${uid}`).get()).exists, false)
 })
 for (const [name, extra] of Object.entries({ tokens: { balanceTokens: 99 }, rating: { ratingSum: 5 }, average: { averageRating: 5 }, wrongUid: { uid: 'other' }, emptyName: { displayName: '' }, longName: { displayName: 'x'.repeat(81) }, phone: { phoneNumber: 'invalid' } })) {
   test(`Registration rejects ${name}`, async () => {
@@ -64,7 +64,7 @@ for (const operation of ['add', 'change', 'remove']) {
 test('Current availability, preference, dismissal and profile edits remain allowed', async () => {
   const { ref, adminRef } = await tradesperson()
   await updateDoc(ref, { status: 'available', city: 'Beograd', notificationPreference: 'push', dismissedJobs: arrayUnion('job-a') })
-  await updateDoc(ref, { status: 'unavailable', dismissedJobs: arrayUnion('job-b'), displayName: 'Drugi Majstor', phoneNumber: '+381641234568', specialization: 'elektricar' })
+  await updateDoc(ref, { status: 'unavailable', dismissedJobs: arrayUnion('job-b'), displayName: 'Drugi Majstor', phoneNumber: '+381641234568', specialization: 'električar' })
   assert.equal((await adminRef.get()).data().balanceTokens, 0)
   assert.deepEqual((await adminRef.get()).data().dismissedJobs, ['job-a', 'job-b'])
 })
@@ -80,12 +80,12 @@ for (const [name, patch] of Object.entries({ longBio: () => ({ bio: 'x'.repeat(5
     await denied(updateDoc(ref, patch(uid)))
   })
 }
-test('Image declaration and partial-upload finalization remain allowed', async () => {
-  const { ref, id, adminRef } = await pendingJob()
-  await updateDoc(ref, { ...imagePatch(id), imagePaths: [`jobs/${id}/a.jpg`, `jobs/${id}/b.jpg`] })
-  await updateDoc(ref, { imagePaths: [`jobs/${id}/a.jpg`], imagesReady: true, imagesUpdatedAt: serverTimestamp() })
-  assert.equal((await adminRef.get()).data().imagesReady, true)
+test('Client cannot declare or finalize image metadata directly', async () => {
+  const { ref, id } = await pendingJob()
+  await denied(updateDoc(ref, imagePatch(id)))
+  await denied(updateDoc(ref, { imagePaths: [], imagesReady: true, imagesUpdatedAt: serverTimestamp() }))
 })
+
 test('Owner can cancel a pending job and add the server cancellation timestamp', async () => {
   const { ref, adminRef } = await pendingJob()
   await updateDoc(ref, cancelPatch())
@@ -115,7 +115,7 @@ test('Image paths, count, timestamp and ready monotonicity remain enforced', asy
   await denied(updateDoc(ref, { ...imagePatch(id), imagePaths: ['jobs/other/a.jpg'] }))
   await denied(updateDoc(ref, { ...imagePatch(id), imagePaths: [1, 2, 3, 4].map(n => `jobs/${id}/${n}.jpg`) }))
   await denied(updateDoc(ref, { ...imagePatch(id), imagesUpdatedAt: new Date(0) }))
-  await updateDoc(ref, { ...imagePatch(id), imagesReady: true })
+  await denied(updateDoc(ref, { ...imagePatch(id), imagesReady: true }))
   await denied(updateDoc(ref, imagePatch(id)))
 })
 test('Other clients and anonymous callers cannot mutate profiles or jobs', async () => {
@@ -137,17 +137,7 @@ for (const status of ['accepted', 'completed', 'canceled']) {
   })
 }
 
-// Match the current request form's full payload, then its metadata-only finalization.
-test('Current client request creation and full-upload finalization remain allowed', async () => {
-  const uid = 'rules-create-client', id = 'rules-created-job';
-  const ref = doc(client(uid).db, 'jobs', id);
-  await setDoc(ref, job(uid, { coordinates: new GeoPoint(44.8, 20.46), createdAt: serverTimestamp() }));
-  await updateDoc(ref, imagePatch(id));
-  await updateDoc(ref, { imagesReady: true, imagesUpdatedAt: serverTimestamp() });
-  assert.equal((await seedDb.doc('jobs/' + id).get()).data().imagesReady, true);
-});
-test('Zero successful photos can be finalized with an empty path list', async () => {
-  const { ref, id } = await pendingJob();
-  await updateDoc(ref, imagePatch(id));
-  await updateDoc(ref, { imagePaths: [], imagesReady: true, imagesUpdatedAt: serverTimestamp() });
-});
+test('Browser cannot create a job directly, including a previously valid payload', async () => {
+  const uid = 'rules-create-client', id = 'rules-created-job'
+  await denied(setDoc(doc(client(uid).db, 'jobs', id), job(uid, { coordinates: new GeoPoint(44.8, 20.46), createdAt: serverTimestamp() })))
+})

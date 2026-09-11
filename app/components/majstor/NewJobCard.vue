@@ -1,5 +1,5 @@
 <template>
-  <article class="bg-white/80 backdrop-blur rounded-[2rem] ring-1 ring-black/5 shadow-sm p-5 sm:p-6 space-y-3">
+  <article ref="card" class="bg-white/80 backdrop-blur rounded-[2rem] ring-1 ring-black/5 shadow-sm p-5 sm:p-6 space-y-3">
     <div class="flex items-start justify-between gap-3">
       <div class="min-w-0">
         <div class="text-lg font-extrabold text-brand-navy tracking-tight">
@@ -73,7 +73,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
+import { useApi } from '@/utils/api'
 import { useAuthStore } from '@/stores/auth'
 import { timestampCacheKey } from '@/utils/timestampCacheKey'
 
@@ -90,6 +91,23 @@ interface JobItem {
 const props = defineProps<{ job: JobItem }>()
 const emit = defineEmits<{ (e: 'dismiss', jobId: string): void; (e: 'accepted', job: JobItem): void }>()
 
+const api = useApi()
+const auth = useAuthStore()
+const card = ref<HTMLElement | null>(null)
+const visible = ref(false)
+let observer: IntersectionObserver | null = null
+let imageGeneration = 0
+onMounted(() => {
+  observer = new IntersectionObserver(entries => {
+    if (entries.some(entry => entry.isIntersecting)) { visible.value = true; observer?.disconnect() }
+  }, { rootMargin: '100px' })
+  if (card.value) observer.observe(card.value)
+})
+function clearImages() {
+  for (const url of imageUrls.value) URL.revokeObjectURL(url)
+  imageUrls.value = []; closeImage()
+}
+onBeforeUnmount(() => { observer?.disconnect(); imageGeneration++; clearImages() })
 const accepting = ref(false)
 const errorMsg = ref('')
 const successMsg = ref('')
@@ -116,99 +134,36 @@ function closeImage() {
 }
 
 async function loadImageUrls() {
-  if (!import.meta.client) return
-  if (!imagesReady.value) {
-    imageUrls.value = []
-    imageErrorMsg.value = ''
-    return
-  }
-  const paths = Array.isArray(props.job?.imagePaths) ? props.job.imagePaths : []
-  if (!paths.length) {
-    imageUrls.value = []
-    imageErrorMsg.value = ''
-    return
-  }
-
-  const { $storage } = useNuxtApp() as any
-  if (!$storage) {
-    imageUrls.value = []
-    imageErrorMsg.value = 'Storage nije dostupan.'
-    return
-  }
-
-  loadingImages.value = true
-  imageErrorMsg.value = ''
+  const generation = ++imageGeneration
+  const uid = auth.currentUser?.uid
+  clearImages()
+  if (!import.meta.client || !visible.value || !uid || !imagesReady.value) return
+  const paths = (props.job.imagePaths || []).slice(0, 3)
+  if (!paths.length) return
+  loadingImages.value = true; imageErrorMsg.value = ''
   try {
-    const { ref: storageRef, getDownloadURL } = await import('firebase/storage')
-    const key = cacheKey.value
-    const urls = await Promise.all(
-      paths.slice(0, 3).map(async (p) => {
-        const u = await getDownloadURL(storageRef($storage, p))
-        return key ? `${u}${u.includes('?') ? '&' : '?'}v=${encodeURIComponent(key)}` : u
-      })
-    )
-    imageUrls.value = urls
+    const blobs = await Promise.all(paths.map(path => api<Blob>('readJobImage', { jobId: props.job.jobId, slot: Number(path.split('/').pop()?.replace('.jpg', '')) }, 'blob')))
+    if (generation !== imageGeneration || auth.currentUser?.uid !== uid) return
+    imageUrls.value = blobs.map(blob => URL.createObjectURL(blob))
   } catch {
-    imageUrls.value = []
-    imageErrorMsg.value = 'Ne mogu da učitam slike.'
-  } finally {
-    loadingImages.value = false
-  }
+    if (generation === imageGeneration) imageErrorMsg.value = 'Ne mogu da učitam slike. Osvežite stranicu i pokušajte ponovo.'
+  } finally { if (generation === imageGeneration) loadingImages.value = false }
 }
-
-watch(
-  () => ({ paths: (props.job?.imagePaths || []).join('|'), ready: imagesReady.value, key: cacheKey.value }),
-  () => {
-    loadImageUrls()
-  },
-  { immediate: true }
-)
+watch(() => [(props.job.imagePaths || []).join('|'), imagesReady.value, cacheKey.value, visible.value, auth.currentUser?.uid], loadImageUrls, { immediate: true })
 
 async function onAccept() {
   accepting.value = true
   errorMsg.value = ''
   successMsg.value = ''
   try {
-    const auth = useAuthStore()
-    await auth.ensureAuthReady()
-    const { $firebaseAuth } = useNuxtApp()
-    const idToken = await $firebaseAuth.currentUser?.getIdToken()
-    if (!idToken) throw new Error('Niste prijavljeni.')
-
-    const config = useRuntimeConfig()
-    const projectId = config.public.firebase.projectId || 'majstorsada-b2ad4'
-    const region = config.public.firebase.functionsRegion || 'europe-west3'
-  const base = process.env.NODE_ENV === 'development'
-    ? `http://localhost:5501/${projectId}/${region}`
-      : `https://${region}-${projectId}.cloudfunctions.net`
-
-    const resp = await fetch(`${base}/acceptJob`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${idToken}`
-      },
-      body: JSON.stringify({ data: { jobId: props.job.jobId } })
-    })
-    const json = await resp.json().catch(() => ({}))
-    if (!resp.ok || json?.ok === false) {
-      throw new Error(json?.error || 'Greška pri prihvatanju posla.')
-    }
+    await api('acceptJob', { jobId: props.job.jobId })
     successMsg.value = 'Posao prihvaćen.'
     acceptedOnce.value = true
     emit('accepted', props.job)
   } catch (e: any) {
-    const msg = e?.message || 'Greška pri prihvatanju posla.'
-    if (/not available/i.test(msg) || /precondition/i.test(msg) || /412/.test(msg)) {
-      errorMsg.value = 'Posao je već prihvaćen od drugog majstora.'
-      emit('dismiss', props.job.jobId)
-    } else {
-      errorMsg.value = msg
-    }
+    errorMsg.value = e?.message || 'Greška pri prihvatanju posla.'
   } finally {
     accepting.value = false
   }
 }
 </script>
-
-

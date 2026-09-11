@@ -1,46 +1,28 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-
-    function isAuthenticated() { return request.auth != null; }
-    
-    function jobDoc(jobId) {
-      return firestore.get(/databases/(default)/documents/jobs/$(jobId)).data;
+    function signedIn() { return request.auth != null; }
+    function job(jobId) { return firestore.get(/databases/(default)/documents/jobs/$(jobId)).data; }
+    // Only the authenticated readJobImage server can read published bytes.
+    // A browser cannot obtain a persistent Firebase download URL for these files.
+    match /jobs/{jobId}/{file} { allow read, write: if false; }
+    function canStage(uid, jobId, file) {
+      let j = job(jobId);
+      return signedIn() && request.auth.uid == uid && j.clientId == uid && j.schemaVersion == 2
+        && j.status == 'pending' && j.imagesReady == false && !('imageFinalizationSlots' in j)
+        && ((file == '0.jpg' && j.photoCount >= 1) || (file == '1.jpg' && j.photoCount >= 2) || (file == '2.jpg' && j.photoCount >= 3));
     }
-
-    // Zadrzavamo strogu logiku SAMO za WRITE (upload)
-    function canWriteJobImage(jobId, file) {
-      let j = jobDoc(jobId);
-      let expectedPath = "jobs/" + jobId + "/" + file;
-      return isAuthenticated()
-        && j.clientId == request.auth.uid
-        && j.status == "pending"
-        && !("acceptedByTradespersonId" in j)
-        && ("imagePaths" in j)
-        && (j.imagePaths is list)
-        && (j.imagePaths.size() <= 3)
-        && j.imagePaths.hasAny([expectedPath])
-        && request.resource.size < 3 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*');
+    match /job-uploads/{uid}/{jobId}/{file} {
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow create: if resource == null && canStage(uid, jobId, file) && request.resource.size > 0 && request.resource.size < 3 * 1024 * 1024 && request.resource.contentType == 'image/jpeg';
+      allow delete: if canStage(uid, jobId, file);
+      allow list, update: if false;
     }
-
-    // --- GLAVNA PROMENA OVDE ---
-    match /jobs/{jobId}/{file} {
-      // READ: Dozvoljavamo svakom ulogovanom korisniku (bez skupih Firestore provera)
-      allow read: if request.auth != null;
-      
-      // WRITE: Ostaje strogo (samo vlasnik uz validaciju)
-      allow write: if canWriteJobImage(jobId, file);
-    }
-
-    // Avatari ostaju isti
+    // Public profile avatars retain their existing behavior.
     match /avatars/{uid}/{file} {
       allow read: if true;
-      allow write: if isAuthenticated()
-        && request.auth.uid == uid
-        && file == "profile.jpg"
-        && request.resource.size < 2 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*');
+      allow write: if signedIn() && request.auth.uid == uid && file == 'profile.jpg'
+        && request.resource.size < 2 * 1024 * 1024 && request.resource.contentType.matches('image/.*');
     }
   }
 }

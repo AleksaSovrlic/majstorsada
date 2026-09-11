@@ -1,38 +1,18 @@
 import { HttpsError, onRequest } from 'firebase-functions/v2/https'
 import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore'
 import * as logger from 'firebase-functions/logger'
-import { initializeApp, cert, applicationDefault } from 'firebase-admin/app'
+import { initializeApp } from 'firebase-admin/app'
 import { FieldValue, getFirestore } from 'firebase-admin/firestore'
 import { getAuth } from 'firebase-admin/auth'
 import cors from 'cors'
 import { getMessaging } from 'firebase-admin/messaging'
 import { BUILD_SHA } from './version'
-import path from 'path'
-import fs from 'fs'
+import { setGlobalOptions } from 'firebase-functions/v2'
+import * as lifecycle from './jobLifecycle'
+setGlobalOptions({ region: 'europe-west3', minInstances: 0, maxInstances: 3, memory: '256MiB', timeoutSeconds: 60, concurrency: 80 })
 
-// Conditional Admin initialization: dev uses local service account, cloud uses default
-(() => {
-  const isLocal = process.env.FUNCTIONS_EMULATOR === 'true' || process.env.NODE_ENV === 'development'
-  try {
-    if (isLocal) {
-      const keyPath = path.join(__dirname, '..', '.keys', 'serviceAccountKey.json')
-      const json = JSON.parse(fs.readFileSync(keyPath, 'utf-8'))
-      initializeApp({ credential: cert(json as any) })
-      logger.info('Admin initialized with local service account key')
-    } else {
-      // In cloud, rely on the service account attached to the runtime
-      try {
-        initializeApp({ credential: applicationDefault() })
-      } catch {
-        initializeApp()
-      }
-    }
-  } catch (e: any) {
-    // Fallback to default to avoid crashing cold start; errors will surface in operations
-    logger.error('Admin init fallback', { message: e?.message })
-    try { initializeApp() } catch {}
-  }
-})()
+// Emulator connections use the same Admin SDK without a service-account key.
+initializeApp({ projectId: process.env.GCLOUD_PROJECT || undefined })
 
 export const health = onRequest({ region: 'europe-west3' }, (req, res) => {
   res.status(200).send({ ok: true, service: 'functions', env: process.env.NODE_ENV || 'development', version: BUILD_SHA })
@@ -58,13 +38,13 @@ const corsHandler = cors({
   optionsSuccessStatus: 204
 })
 
-async function verifyBearer(req: any): Promise<{ uid: string; email?: string } | null> {
+async function verifyBearer(req: any): Promise<lifecycle.Actor | null> {
   try {
     const header: string = req.get('Authorization') || ''
     const match = header.match(/^Bearer\s+(.+)$/i)
     if (!match) return null
     const decoded = await getAuth().verifyIdToken(match[1])
-    return { uid: decoded.uid, email: decoded.email }
+    return { uid: decoded.uid, email: decoded.email, email_verified: decoded.email_verified, accountRole: decoded.accountRole }
   } catch {
     return null
   }
@@ -162,85 +142,47 @@ async function sendJobAvailablePush(opts: {
   }
 }
 
-export const acceptJob = onRequest({ region: 'europe-west3' }, (req, res) => {
-  corsHandler(req, res, async () => {
-    if (req.method === 'OPTIONS') return res.status(204).send('')
-    if (req.method !== 'POST') return res.status(405).send({ error: 'Method Not Allowed' })
-
-    const auth = await verifyBearer(req)
-    if (!auth) return res.status(401).send({ error: 'Authentication required.' })
-
-    const data = (req.body?.data || {}) as { jobId?: string }
-    if (!data?.jobId || typeof data.jobId !== 'string') {
-      return res.status(400).send({ error: 'Missing or invalid jobId.' })
-    }
-
-    const db = getFirestore()
-    const jobRef = db.collection('jobs').doc(data.jobId)
-    const tradespersonRef = db.collection('tradespeople').doc(auth.uid)
-
-    try {
-      const result = await db.runTransaction(async (tx) => {
-        const [jobSnap, tradespersonSnap] = await Promise.all([
-          tx.get(jobRef),
-          tx.get(tradespersonRef)
-        ])
-
-        if (!jobSnap.exists) {
-          return Promise.reject({ code: 404, message: 'Job does not exist.' })
-        }
-        const job = jobSnap.data() as any
-
-        if (job.status !== 'pending') {
-          return Promise.reject({ code: 412, message: 'Job is not available for acceptance.' })
-        }
-
-        if (!tradespersonSnap.exists) {
-          return Promise.reject({ code: 403, message: 'Tradesperson profile not found.' })
-        }
-        const tp = tradespersonSnap.data() as any
-
-        const tokens = Number(tp.balanceTokens ?? 0)
-        if (!Number.isFinite(tokens) || tokens <= 0) {
-          return Promise.reject({ code: 412, message: 'Nemate dovoljno žetona da prihvatite ovaj posao.' })
-        }
-
-        tx.update(jobRef, {
-          status: 'accepted',
-          acceptedByTradespersonId: auth.uid,
-          acceptedAt: FieldValue.serverTimestamp(),
-          acceptedByTradespersonProfile: {
-            displayName: (tp.displayName || '').toString(),
-            phoneNumber: (tp.phoneNumber || '').toString(),
-            bio: (tp.bio && typeof tp.bio === 'string' && tp.bio.trim().length)
-              ? tp.bio.toString().slice(0, 500)
-              : null,
-            avatarPath: (tp.avatarPath && typeof tp.avatarPath === 'string' && tp.avatarPath.trim().length)
-              ? tp.avatarPath.toString()
-              : null,
-            avatarUpdatedAt: tp.avatarUpdatedAt ?? null,
-            averageRating: Number(tp.averageRating ?? 0),
-            ratingCount: Number(tp.ratingCount ?? 0)
-          }
-        })
-        tx.update(tradespersonRef, {
-          balanceTokens: FieldValue.increment(-1)
-        })
-
-        return { jobId: data.jobId, acceptedBy: auth.uid }
-      })
-
-      logger.info('acceptJob success', result)
-      return res.status(200).send({ ok: true, jobId: result?.jobId, acceptedBy: (result as any)?.acceptedBy })
-    } catch (error: any) {
-      const status = error?.code && Number.isFinite(error.code) ? error.code : 500
-      const message = error?.message || 'Unexpected error during acceptJob.'
-      if (status !== 500) {
-        logger.warn('acceptJob failed (expected)', { status, message })
-      } else {
-        logger.error('acceptJob failed (unexpected)', { message, stack: error?.stack })
+// Small HTTP adapter shared by the new account/job operations. Domain errors
+// carry a stable code so the UI does not confuse insufficient tokens with a lost job.
+function lifecycleEndpoint(action: (actor: lifecycle.Actor, data: any) => Promise<any>) {
+  return onRequest({ region: 'europe-west3' }, (req, res) => {
+    corsHandler(req, res, async () => {
+      if (req.method === 'OPTIONS') { res.status(204).send(''); return }
+      if (req.method !== 'POST') { res.status(405).send({ error: 'Method Not Allowed' }); return }
+      const actor = await verifyBearer(req)
+      if (!actor) { res.status(401).send({ error: 'Prijavite se ponovo.', code: 'unauthenticated' }); return }
+      try {
+        if (Number(req.get('content-length') || 0) > 16384) throw new HttpsError('invalid-argument', 'Zahtev je prevelik.')
+        const result = await action(actor, req.body?.data || {})
+        res.status(200).send({ ok: true, ...result })
+      } catch (error: any) {
+        const statuses: Record<string, number> = { 'invalid-argument': 400, 'unauthenticated': 401, 'permission-denied': 403, 'not-found': 404, 'already-exists': 409, 'failed-precondition': 412, 'resource-exhausted': 429, 'unavailable': 503 }
+        const code = error instanceof HttpsError ? error.code : 'internal'
+        if (code === 'internal') logger.error('Lifecycle operation failed', { operation: action.name, code: error?.code })
+        res.status(statuses[code] || 500).send({ ok: false, code, error: code === 'internal' ? 'Radnja nije završena. Pokušajte ponovo.' : error.message })
       }
-      return res.status(status).send({ error: message })
+    })
+  })
+}
+export const resolveAccount = lifecycleEndpoint(lifecycle.resolveAccount)
+export const completeRegistration = lifecycleEndpoint(lifecycle.completeRegistration)
+export const createJob = lifecycleEndpoint(lifecycle.createJob)
+export const finalizeJobImages = lifecycleEndpoint(lifecycle.finalizeJobImages)
+export const acceptJob = lifecycleEndpoint(lifecycle.acceptJob)
+export const readJobImage = onRequest({ region: 'us-central1', concurrency: 20 }, (req, res) => {
+  corsHandler(req, res, async () => {
+    res.setHeader('Cache-Control', 'private, no-store')
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    if (req.method !== 'POST') { res.status(405).send('Method Not Allowed'); return }
+    const actor = await verifyBearer(req)
+    if (!actor) { res.status(401).send({ error: 'Prijavite se ponovo.' }); return }
+    try {
+      const bytes = await lifecycle.readJobImage(actor, req.body?.data || {})
+      res.setHeader('Content-Type', 'image/jpeg')
+      res.status(200).send(bytes)
+    } catch (error: any) {
+      const status = error instanceof HttpsError ? ({ 'invalid-argument': 400, 'not-found': 404, 'permission-denied': 403, 'failed-precondition': 412 } as Record<string, number>)[error.code] || 500 : 500
+      res.status(status).send({ error: status === 500 ? 'Fotografija trenutno nije dostupna.' : error.message })
     }
   })
 })
@@ -262,6 +204,8 @@ export const submitJobRating = onRequest({ region: 'europe-west3' }, (req, res) 
     }
 
     try {
+      lifecycle.requireWritesEnabled()
+      await lifecycle.requireRole(auth.uid, 'client')
       const db = getFirestore()
       const jobRef = db.collection('jobs').doc(jobId)
       logger.info('submitJobRating incoming', { jobId, uid: auth.uid, stars, hasComment: !!comment })
@@ -316,6 +260,7 @@ export const submitJobRating = onRequest({ region: 'europe-west3' }, (req, res) 
         'not-found': 404,
         'failed-precondition': 412,
         'permission-denied': 403,
+        'unavailable': 503,
         'already-exists': 409,
       } as Record<string, number>)[stringCode] : undefined
       const status = Number.isFinite(error?.code) ? error.code : (statusFromString || 500)
@@ -343,6 +288,8 @@ export const markJobAsComplete = onRequest({ region: 'europe-west3' }, (req, res
     }
 
     try {
+      lifecycle.requireWritesEnabled()
+      await lifecycle.requireRole(auth.uid, 'tradesperson')
       logger.info('markJobAsComplete request', { jobId, uid: auth.uid })
       const db = getFirestore()
       const jobRef = db.collection('jobs').doc(jobId)
@@ -363,7 +310,7 @@ export const markJobAsComplete = onRequest({ region: 'europe-west3' }, (req, res
       logger.info('markJobAsComplete success', { jobId, uid: auth.uid })
       return res.status(200).send({ ok: true, jobId })
     } catch (error: any) {
-      const status = error?.code && Number.isFinite(error.code) ? error.code : 500
+      const status = error?.code && Number.isFinite(error.code) ? error.code : ({ 'permission-denied': 403, 'unavailable': 503, 'failed-precondition': 412 } as Record<string, number>)[error?.code] || 500
       const message = error?.message || 'Unexpected error during markJobAsComplete.'
       return res.status(status).send({ error: message })
     }
@@ -411,9 +358,11 @@ export const updateTokensByAdmin = onRequest({ region: 'europe-west3' }, (req, r
         return res.status(403).send({ error: 'Admin privileges required.' })
       }
 
+      lifecycle.requireWritesEnabled()
+      await lifecycle.requireRole(decoded.uid, 'admin')
       const { uid, delta: rawDelta } = (req.body?.data || {}) as { uid?: string; delta?: number | string }
-      const delta = Math.trunc(Number(rawDelta))
-      if (!uid || typeof uid !== 'string' || !Number.isFinite(delta) || delta === 0) {
+      const delta = Number(rawDelta)
+      if (!uid || typeof uid !== 'string' || !Number.isSafeInteger(delta) || delta === 0) {
         return res.status(400).send({ error: 'Invalid uid or delta provided.' })
       }
 
@@ -426,7 +375,7 @@ export const updateTokensByAdmin = onRequest({ region: 'europe-west3' }, (req, r
         }
         const currentTokens = Number(snap.data()?.balanceTokens ?? 0)
         const finalTokens = currentTokens + delta
-        if (finalTokens < 0) {
+        if (!Number.isSafeInteger(currentTokens) || !Number.isSafeInteger(finalTokens) || finalTokens < 0) {
           throw new HttpsError('failed-precondition', 'Stanje žetona ne može biti negativno.')
         }
         tx.update(ref, { balanceTokens: finalTokens })
@@ -437,7 +386,7 @@ export const updateTokensByAdmin = onRequest({ region: 'europe-west3' }, (req, r
     } catch (error: any) {
       logger.error('updateTokensByAdmin failed', { message: error?.message })
       if (error instanceof HttpsError) {
-        const statusMap: Record<string, number> = { 'not-found': 404, 'failed-precondition': 412 }
+        const statusMap: Record<string, number> = { 'not-found': 404, 'failed-precondition': 412, 'permission-denied': 403, 'unavailable': 503 }
         const status = statusMap[error.code] || 500
         return res.status(status).send({ error: { message: error.message } })
       }

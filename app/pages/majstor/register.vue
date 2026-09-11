@@ -41,6 +41,7 @@
               <label class="block text-sm font-medium text-gray-700 mb-1">E-mail</label>
               <input
                 v-model="email"
+                :readonly="!!authStore.currentUser"
                 type="email"
                 required
                 autocomplete="email"
@@ -66,7 +67,7 @@
               </p>
             </div>
 
-            <div>
+            <div v-if="!authStore.currentUser">
               <label class="block text-sm font-medium text-gray-700 mb-1">Lozinka</label>
               <input
                 v-model="password"
@@ -109,7 +110,7 @@
               :disabled="loading || !phoneValid"
               class="w-full h-12 sm:h-14 inline-flex items-center justify-center rounded-xl bg-brand-blue text-white font-bold text-base sm:text-lg shadow-lg shadow-blue-500/25 hover:bg-brand-blue-dark active:scale-[0.99] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {{ loading ? 'Kreiranje naloga…' : 'Registruj se' }}
+              {{ loading ? 'Čuvanje naloga…' : authStore.currentUser ? 'Dovrši registraciju' : 'Registruj se' }}
             </button>
 
             <div v-if="errorMsg" class="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-red-700 text-sm">
@@ -144,7 +145,8 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { createUserWithEmailAndPassword } from 'firebase/auth'
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore'
+import { useApi } from '@/utils/api'
+import { accountRoute } from '@/utils/accountRoute'
 import { useAuthStore } from '@/stores/auth'
 import { parsePhoneNumberFromString } from 'libphonenumber-js'
 import { DEFAULT_CITY, SUPPORTED_CITIES } from '@/utils/cities'
@@ -158,6 +160,7 @@ useSeoMeta({
 })
 
 const router = useRouter()
+const api = useApi()
 const authStore = useAuthStore()
 
 const displayName = ref('')
@@ -181,10 +184,14 @@ const e164Phone = computed(() => {
 })
 
 onMounted(async () => {
-  await authStore.ensureAuthReady()
-  if (authStore.currentUser) {
-    router.replace('/majstor/dashboard')
-  }
+  try {
+    await authStore.ensureAuthReady()
+    if (authStore.currentUser) {
+      email.value = authStore.currentUser.email || ''
+      const role = await authStore.resolveUserRole(true)
+      if (role !== 'unregistered') await router.replace(accountRoute(role))
+    }
+  } catch (e: any) { errorMsg.value = e.message }
 })
 
 async function submit() {
@@ -192,24 +199,11 @@ async function submit() {
   successMsg.value = ''
   loading.value = true
   try {
-    const { $firebaseAuth, $firestore } = useNuxtApp()
-    if (!phoneValid.value) {
-      throw new Error('Molimo unesite ispravan broj telefona.')
-    }
-    const cred = await createUserWithEmailAndPassword($firebaseAuth, email.value, password.value)
-    const uid = cred.user.uid
-    await setDoc(doc($firestore, 'tradespeople', uid), {
-      uid,
-      displayName: displayName.value,
-      phoneNumber: e164Phone.value,
-      email: cred.user.email || email.value,
-      specialization: specialization.value,
-      city: city.value,
-      status: 'unavailable',
-      balanceTokens: 0,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    }, { merge: true })
+    const { $firebaseAuth } = useNuxtApp()
+    const payload = { role: 'tradesperson', displayName: displayName.value, phoneNumber: e164Phone.value, specialization: specialization.value, city: city.value }
+    if (!$firebaseAuth.currentUser) await createUserWithEmailAndPassword($firebaseAuth, email.value.trim(), password.value)
+    await api('completeRegistration', payload)
+    await authStore.resolveUserRole(true)
     successMsg.value = 'Nalog je uspešno kreiran.'
     router.push('/majstor/dashboard')
   } catch (e: any) {
