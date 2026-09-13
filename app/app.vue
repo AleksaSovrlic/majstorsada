@@ -1,5 +1,15 @@
 <template>
-  <NuxtLayout>
+  <ClientOnly v-if="clientAccountEntry">
+    <NuxtLayout>
+      <NuxtPage :page-key="pageKey" />
+    </NuxtLayout>
+    <template #fallback>
+      <main role="status" aria-live="polite" class="min-h-screen flex items-center justify-center p-6 text-brand-navy">
+        Učitavanje naloga…
+      </main>
+    </template>
+  </ClientOnly>
+  <NuxtLayout v-else>
     <NuxtPage :page-key="pageKey" />
   </NuxtLayout>
 </template>
@@ -10,6 +20,16 @@ import { useAuthStore } from '@/stores/auth'
 import { accountRoute, requiredRole } from '@/utils/accountRoute'
 
 const route = useRoute()
+// Keep the initial rendering mode in the SSR payload: client middleware may
+// redirect to another layout before hydration, using browser-only Auth state.
+// Public pages retain SSR. Account views mount after that decision, without
+// an extra document request, a second role check, or a new session mechanism.
+const clientAccountEntry = useState('client-account-entry', () => {
+  let path = route.path
+  try { path = decodeURIComponent(path) } catch {}
+  path = path.replace(/\/+$/, '') || '/'
+  return !!requiredRole(path) || ['/login', '/finishLogin', '/account', '/majstor/login', '/majstor/register', '/admin/login'].includes(path)
+})
 const runtime = useRuntimeConfig()
 const canonicalBase = computed(() => {
   const raw = (runtime.public as any).siteUrl as string | undefined

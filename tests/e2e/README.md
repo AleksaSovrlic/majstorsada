@@ -2,7 +2,7 @@
 
 The suite starts Auth, Firestore, Storage and Functions for demo-majstorsada-e2e, then Nuxt with tests/e2e/demo.env. It refuses a pre-existing server on port 3333. A deterministic Mapbox fixture replaces address search; all other external browser requests are blocked. Auth and application APIs use real emulators, without production data or real email/push delivery.
 
-Prerequisites: locked Node dependencies, Java, Python 3, Pillow and Playwright. For example, install playwright and pillow with pip, then run python -m playwright install chromium. E2E_PYTHON optionally selects Python. E2E_BROWSER_CHANNEL=msedge selects installed Edge. PYTHONIOENCODING=utf-8 avoids Windows console encoding issues.
+Prerequisites: locked Node dependencies, Java 21+, Python 3, Pillow and Playwright. See docs/dependency-checks.md for the isolated Java/Python setup and pinned tests/requirements.txt. For example, install playwright and pillow with pip, then run python -m playwright install chromium. E2E_PYTHON optionally selects Python. E2E_BROWSER_CHANNEL=msedge selects installed Edge. PYTHONIOENCODING=utf-8 avoids Windows console encoding issues.
 
 Run from the repository root:
 

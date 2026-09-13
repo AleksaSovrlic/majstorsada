@@ -150,7 +150,7 @@ useHead({
             name: 'Hitno otvaranje vrata i bravarske intervencije',
             serviceType: 'Bravarske usluge',
             description: landing.seo.description,
-            provider: { '@id': `${siteUrl}/#organization` },
+            provider: { '@id': `${siteUrl}/#identity` },
             areaServed: { '@type': 'City', name: 'Beograd' }
           },
           {

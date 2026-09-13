@@ -19,6 +19,12 @@ def documents(collection):
 def doc_fields(path):
     return http('http://127.0.0.1:8180/v1/projects/' + PROJECT + '/databases/(default)/documents/' + path)['fields']
 def inspect(page, name):
+    # DOMContentLoaded can precede Vue hydration on a cold Vite start.
+    # Filling SSR inputs before listeners attach can lose their values.
+    page.wait_for_function('''() => {
+        try { return window.useNuxtApp?.().isHydrating === false }
+        catch { return false }
+    }''', timeout=90000)
     try:
         page.wait_for_load_state('networkidle', timeout=5000)
     except PlaywrightTimeout:
@@ -48,7 +54,10 @@ with sync_playwright() as p:
     def context():
         c = browser.new_context(service_workers='block')
         c.route('**/*', traffic)
-        c.on('page', lambda page: page.on('pageerror', lambda error: errors.append(str(error))))
+        def observe_page(page):
+            page.on('pageerror', lambda error: errors.append(str(error)))
+            page.on('console', lambda message: errors.append(message.text) if message.type == 'error' and 'hydration' in message.text.lower() else None)
+        c.on('page', observe_page)
         contexts.append(c); return c
     tp_context = context(); tp = tp_context.new_page()
     client_context = context(); customer = client_context.new_page()
@@ -210,6 +219,7 @@ with sync_playwright() as p:
                     page.screenshot(path=str(ART / ('failure-' + str(index) + '-' + str(i) + '.png')), full_page=True)
                     print('FAILURE PAGE', page.url, page.locator('body').inner_text()[:6000], flush=True)
                 except Exception: pass
+        print('Browser page errors at failure:', repr(errors), flush=True)
         traceback.print_exc(); raise
     finally:
         browser.close()

@@ -1,6 +1,6 @@
 # Pre-marketing work packages
 
-Updated after the production rollout and owner acceptance checks, September 2026. The remaining order below is a proposal, not approval to implement every package. Prepare each implementation plan against the then-current code and agree its scope before starting.
+Updated 13 September 2026 after package 3 production deployment and automated verification; packages 1 and 2 are already production-released and owner-accepted. The remaining order below is a proposal, not approval to implement every package. Prepare each implementation plan against the then-current code and agree its scope before starting.
 
 ## Completed foundations
 
@@ -9,9 +9,11 @@ Updated after the production rollout and owner acceptance checks, September 2026
 - Package 2 centralized role registration and job operations on the server, separated private contact, introduced authenticated photo delivery, and made registration/job submission recoverable after interruptions. One acceptance debits one token; repeat acceptance does not debit twice.
 - Package 2 passed 96 security tests, emulator browser workflows, production API/Storage checks and owner-reported manual live checks. Production release and cost assumptions are recorded in phase2-release.md and blaze-model.md.
 
-## Proposed next package: dependency maintenance
+## Current package: dependency maintenance — production released and owner-accepted
 
-Triage the existing production dependency advisories and update affected packages in bounded groups. Preserve Firebase/Nuxt compatibility and the reproducible SSR lockfile. Re-run the relevant security/browser checks and production build before a controlled release. The prior applicability review does not close the reported advisories.
+Package 3 updates the supported Firebase/Nuxt toolchain and adds the reviewed SSR manifest/lockfile as source artifacts for repeatable installs. Runtime and source/tool audits have no high/critical findings in the reviewed snapshot; remaining moderate findings have individual applicability notes. A stable browser-mounted private entry avoids hydration mismatches when browser-only Auth redirects before mount, while public pages retain SSR/prerendering and private routes remain noindex.
+
+Local validation passed: 98 security tests, 13 build guards, emulator HTTP/business browser flows with hydration-error checking, and compiled SSR/public SEO plus 12 private-route checks. See phase3-report.md for versions, scope, evidence and limitations. Production was published after owner approval; live technical/browser/business checks passed and existing data was preserved. See phase3-release.md. The owner subsequently confirmed the manual live checks passed and authorized the Git commit/push. Initial linked JS/CSS grew by about 74 KB gzip; measure real loading and optimize public-page delivery before marketing.
 
 ## Following package: abuse prevention and cost control
 

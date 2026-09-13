@@ -150,7 +150,7 @@ useHead({
             name: 'Hitne vodoinstalaterske intervencije',
             serviceType: 'Vodoinstalaterske usluge',
             description: landing.seo.description,
-            provider: { '@id': `${siteUrl}/#organization` },
+            provider: { '@id': `${siteUrl}/#identity` },
             areaServed: { '@type': 'City', name: 'Beograd' }
           },
           {

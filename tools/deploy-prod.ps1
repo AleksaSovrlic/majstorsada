@@ -44,20 +44,7 @@ try {
     }
   }
 
-  # .output/server/node_modules is never uploaded; this install exists to produce the
-  # package-lock.json that IS uploaded and that Cloud Build installs from.
-  Write-Host 'Installing production dependencies for Nuxt SSR function...'
-  Push-Location '.output/server'
-  try {
-    npm install --omit=dev
-    if ($LASTEXITCODE -ne 0) {
-      exit $LASTEXITCODE
-    }
-  }
-  finally {
-    Pop-Location
-  }
-
+  # npm run build already installed the reviewed SSR lockfile with npm ci.
   node tools/assert-ssr-deps.mjs
   if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
@@ -66,9 +53,11 @@ try {
   Write-Host "SSR runtime: firebase-functions@$ssrRuntime"
 
   $env:FUNCTIONS_DISCOVERY_TIMEOUT = '60'
+  # Use file-based discovery with the pinned Windows CLI/SDK, as the emulator tests do.
+  $env:FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH = 'true'
   Write-Host "Using FUNCTIONS_DISCOVERY_TIMEOUT=$env:FUNCTIONS_DISCOVERY_TIMEOUT seconds..."
   Write-Host 'Deploying to Firebase production...'
-  firebase deploy --only 'firestore,storage,functions,hosting' --project majstorsada-b2ad4
+  node node_modules/firebase-tools/lib/bin/firebase.js deploy --only 'firestore,storage,functions,hosting' --project majstorsada-b2ad4
   if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
   }

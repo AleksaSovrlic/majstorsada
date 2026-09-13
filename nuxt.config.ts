@@ -65,7 +65,13 @@ export default defineNuxtConfig({
     firebase: {
       gen: 2,
       httpsOptions: {
-        region: 'europe-west3'
+        region: 'europe-west3',
+        // Match the reviewed production budget; SDK defaults reset omitted limits.
+        minInstances: 0,
+        maxInstances: 3,
+        memory: '256MiB',
+        timeoutSeconds: 60,
+        concurrency: 80
       },
       // The runtime for the SSR function. Without this the Firebase preset falls back to a
       // hardcoded "20" of its own (nitropack/dist/presets/firebase/utils.mjs), so the version
@@ -129,6 +135,12 @@ export default defineNuxtConfig({
           if (version === 'latest') {
             delete deps[name]
             nitro.logger.info(`SSR dependency "${name}" was untraced and unpinned - removed`)
+          }
+        }
+
+        for (const [name, version] of Object.entries(deps)) {
+          if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(version)) {
+            throw new Error('SSR dependency must have an exact version: ' + name + '@' + version)
           }
         }
 

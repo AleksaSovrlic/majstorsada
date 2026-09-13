@@ -1,37 +1,42 @@
-// Guards the SSR function's dependency set at deploy time.
-//
-// `.output/server/node_modules` is never uploaded (firebase.json ignores it), so what actually
-// determines the production runtime is the pair that IS uploaded: package.json and package-lock.json.
-// Cloud Build installs from those. If package.json still carries a floating range, or the lockfile
-// is missing entirely, the deployed runtime is decided fresh in the cloud and two deploys of the
-// same commit can differ.
-//
-// The Nitro `compiled` hook in nuxt.config already pins this during `nuxt build`. This script is
-// the net for the path that skips the build: `firebase deploy` invoked directly.
 import { existsSync, readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { resolve, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { isDeepStrictEqual } from 'node:util'
 
-const serverDir = join(dirname(fileURLToPath(import.meta.url)), '..', '.output', 'server')
-const pkgPath = join(serverDir, 'package.json')
-const lockPath = join(serverDir, 'package-lock.json')
-
-const fail = (message) => {
-  console.error(`[assert-ssr-deps] ${message}`)
-  process.exit(1)
+export const projectRoot = fileURLToPath(new URL('../', import.meta.url))
+export const readJson = path => JSON.parse(readFileSync(path, 'utf8').replace(/^\uFEFF/, ''))
+export function validateManifest(pkg) {
+  if (pkg.main !== 'index.mjs' || pkg.engines?.node !== '24') throw new Error('SSR must use index.mjs and Node 24.')
+  if (!Object.keys(pkg.dependencies || {}).length) throw new Error('SSR dependencies are missing.')
+  for (const [name, version] of Object.entries(pkg.dependencies)) {
+    if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(version)) throw new Error(`SSR dependency ${name} must have an exact version (got ${version}).`)
+  }
 }
-
-if (!existsSync(pkgPath)) {
-  fail('.output/server/package.json is missing. Run `npm run build` before deploying.')
+export function validateLock(pkg, lock) {
+  validateManifest(pkg)
+  if (lock.lockfileVersion !== 3 || !lock.packages?.['']) throw new Error('SSR requires an npm v3 lockfile.')
+  if (!isDeepStrictEqual(pkg.dependencies, lock.packages[''].dependencies)) throw new Error('SSR manifest and lockfile dependencies differ.')
+  if (!isDeepStrictEqual(pkg.engines, lock.packages[''].engines)) throw new Error('SSR manifest and lockfile runtime differ.')
+  for (const [name, version] of Object.entries(pkg.dependencies)) {
+    if (lock.packages[`node_modules/${name}`]?.version !== version) throw new Error(`SSR lockfile does not resolve ${name}@${version}.`)
+  }
 }
-if (!existsSync(lockPath)) {
-  fail('.output/server/package-lock.json is missing, so Cloud Build would resolve dependencies itself. Run `npm install --omit=dev` in .output/server before deploying.')
+export function assertSsrDeps(serverDir = join(projectRoot, '.output/server'), canonicalDir = join(projectRoot, 'deploy/ssr')) {
+  for (const dir of [serverDir, canonicalDir]) {
+    for (const name of ['package.json', 'package-lock.json']) {
+      if (!existsSync(join(dir, name))) throw new Error(`${join(dir, name)} is missing. Run npm run ssr:refresh only when intentionally updating dependencies; otherwise npm run build.`)
+    }
+  }
+  if (!existsSync(join(serverDir, 'index.mjs'))) throw new Error('SSR entry point is missing.')
+  const pkg = readJson(join(serverDir, 'package.json')), lock = readJson(join(serverDir, 'package-lock.json'))
+  const approved = readJson(join(canonicalDir, 'package.json')), approvedLock = readJson(join(canonicalDir, 'package-lock.json'))
+  validateLock(pkg, lock)
+  validateLock(approved, approvedLock)
+  if (!isDeepStrictEqual(pkg, approved)) throw new Error('Generated SSR manifest differs from deploy/ssr. Review and refresh the SSR lockfile.')
+  if (!isDeepStrictEqual(lock, approvedLock)) throw new Error('Generated SSR lockfile differs from the reviewed deploy/ssr lockfile.')
+  return Object.keys(pkg.dependencies).length
 }
-
-const deps = JSON.parse(readFileSync(pkgPath, 'utf8')).dependencies || {}
-const floating = Object.entries(deps).filter(([, v]) => v === 'latest').map(([n]) => n)
-if (floating.length > 0) {
-  fail(`Unpinned dependencies in the SSR package.json: ${floating.join(', ')}. These re-resolve on every deploy.`)
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try { console.log(`[assert-ssr-deps] OK: ${assertSsrDeps()} exact dependencies, reviewed lockfile, Node 24.`) }
+  catch (error) { console.error(`[assert-ssr-deps] ${error.message}`); process.exitCode = 1 }
 }
-
-console.log(`[assert-ssr-deps] OK - ${Object.keys(deps).length} pinned dependencies, lockfile present`)
