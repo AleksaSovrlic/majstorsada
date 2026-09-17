@@ -1,10 +1,12 @@
 import { getMessaging, getToken, isSupported, onMessage } from 'firebase/messaging'
+import { useAuthStore } from '@/stores/auth'
 
 export default defineNuxtPlugin({
   name: 'messaging',
-  dependsOn: ['firebase'],
+  dependsOn: ['firebase', 'auth-init'],
   enforce: 'post',
-  async setup(nuxt) {
+  setup(nuxt) {
+    const runtime = useRuntimeConfig()
     const fallbackProvide = {
       provide: {
         fcm: {
@@ -13,130 +15,128 @@ export default defineNuxtPlugin({
         }
       }
     }
+    if (runtime.public.firebase.projectId.startsWith('demo-')) return fallbackProvide
+    if (!('serviceWorker' in navigator) || typeof Notification === 'undefined') return fallbackProvide
 
-    if (useRuntimeConfig().public.firebase.projectId.startsWith('demo-')) return fallbackProvide
-    if (!('serviceWorker' in navigator)) return fallbackProvide
-    const supported = await isSupported().catch(() => false)
-    if (!supported) return fallbackProvide
-
-    const runtime = useRuntimeConfig()
+    // Capture Nuxt/Pinia dependencies before background work crosses an await.
+    const auth = useAuthStore()
     const vapidKey = ((runtime.public as any).firebaseVapidKey as string) || ''
-    let getAndSaveInFlight: Promise<string | null> | null = null
+    type ReadyMessaging = { messaging: ReturnType<typeof getMessaging>; swReg: ServiceWorkerRegistration }
+    let readyPromise: Promise<ReadyMessaging | null> | null = null
+    let unsupported = false
+    const syncByUser = new WeakMap<object, Promise<string | null>>()
 
-    // Register SW at root scope (protect with try/catch to avoid 500 if SW script fails)
-    let swReg: ServiceWorkerRegistration | null = null
-    try {
-      swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/' })
-    } catch (e) {
-      console.warn('[messaging] SW registration failed', e)
-      return fallbackProvide
+    function ensureMessagingReady(): Promise<ReadyMessaging | null> {
+      if (readyPromise) return readyPromise
+      readyPromise = (async () => {
+        if (!(await isSupported())) { unsupported = true; return null }
+        const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/' })
+        const messaging = getMessaging((nuxt as any).$firebaseApp)
+        onMessage(messaging, (payload) => {
+          if (import.meta.dev) {
+            console.log('[messaging] foreground message', payload)
+          }
+          try {
+            // If a Majstor tab is open but not visible/focused, FCM may still deliver the message
+            // to the page (onMessage) instead of the service worker. In that case, show a
+            // browser notification to preserve the expected "background" UX.
+            if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+            const isHidden = typeof document !== 'undefined' && document.visibilityState !== 'visible'
+            const noFocus = typeof document !== 'undefined' && typeof document.hasFocus === 'function' ? !document.hasFocus() : false
+            if (!isHidden && !noFocus) return
+
+            const data: any = (payload as any)?.data || {}
+            const title = (data?.title || 'Novi posao').toString()
+            const body = (data?.body || 'Pogledajte detalje u MajstorSada').toString()
+            const link = (data?.link || '/majstor/dashboard').toString()
+            const n = new Notification(title, { body, data: { ...data, link }, icon: '/favicon.ico' })
+            n.onclick = () => {
+              try { window.focus() } catch { /* noop */ }
+              try { window.location.href = link } catch { /* noop */ }
+              try { n.close() } catch { /* noop */ }
+            }
+          } catch {
+            // ignore
+          }
+        })
+        return { messaging, swReg }
+      })().catch(error => {
+        // A later explicit attempt can retry a transient initialization failure.
+        readyPromise = null
+        console.warn('[messaging] initialization failed', error)
+        return null
+      })
+      return readyPromise
     }
 
-    const messaging = getMessaging((nuxt as any).$firebaseApp)
-
     const requestPermission = async (): Promise<NotificationPermission> => {
-      if (!('Notification' in window)) return 'denied'
-      return await Notification.requestPermission()
+      if (unsupported) return 'denied'
+      // Keep the browser prompt inside the click's user activation; do not await readiness here.
+      return Notification.requestPermission()
     }
 
     const getAndSaveFcmToken = async (): Promise<string | null> => {
-      if (getAndSaveInFlight) return getAndSaveInFlight
-      getAndSaveInFlight = (async () => {
-        try { await navigator.serviceWorker.ready } catch {}
-        const { useAuthStore } = await import('@/stores/auth')
-        const auth = useAuthStore()
-        await auth.ensureAuthReady()
-        if (!auth.currentUser) return null
-        if (auth.role === 'unknown') {
-          try { await auth.resolveUserRole() } catch {}
-        }
-        if (auth.role !== 'tradesperson') {
+      await auth.ensureAuthReady()
+      const user = auth.currentUser
+      if (!user || Notification.permission !== 'granted') return null
+      const existing = syncByUser.get(user)
+      if (existing) return existing
+      const isCurrentSession = () => auth.currentUser === user && auth.role === 'tradesperson'
+      const request = (async () => {
+        try {
+          if (auth.role === 'unknown') await auth.resolveUserRole()
+          if (!isCurrentSession()) return null
+          const ready = await ensureMessagingReady()
+          if (!ready || !isCurrentSession()) return null
+          // A newly installed worker must activate before PushManager.subscribe.
+          await navigator.serviceWorker.ready
+          if (!isCurrentSession() || Notification.permission !== 'granted') return null
+          const token = await getToken(ready.messaging, { vapidKey, serviceWorkerRegistration: ready.swReg })
+          if (!token || !isCurrentSession() || Notification.permission !== 'granted') return null
+          const { doc, setDoc, serverTimestamp, collection, query, where, getDocs, deleteDoc } = await import('firebase/firestore')
+          if (!isCurrentSession()) return null
+          const uid = user.uid
+          const tokenId = btoa(token).replace(/\+/g, '-').replace(/\//g, '_')
+          const firestore = (nuxt as any).$firestore
+          await setDoc(doc(firestore, 'tradespeople', uid, 'fcmTokens', tokenId), {
+            token,
+            platform: 'web',
+            userAgent: navigator.userAgent,
+            origin: location.origin,
+            createdAt: serverTimestamp(),
+            lastSeenAt: serverTimestamp()
+          }, { merge: true })
+          if (!isCurrentSession()) return null
+          try {
+            const colRef = collection(firestore, 'tradespeople', uid, 'fcmTokens')
+            const q = query(colRef, where('origin', '==', location.origin))
+            const snap = await getDocs(q)
+            for (const d of snap.docs) {
+              if (!isCurrentSession()) return null
+              const data = d.data() as any
+              if (d.id !== tokenId && data?.userAgent === navigator.userAgent) await deleteDoc(d.ref)
+            }
+          } catch (error) {
+            console.warn('[messaging] dedupe tokens skipped', error)
+          }
+          return isCurrentSession() ? token : null
+        } catch (error) {
+          console.warn('[messaging] token sync failed', error)
           return null
         }
-
-        const uid = auth.currentUser.uid
-        const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: swReg! })
-        if (!token || auth.currentUser?.uid !== uid || auth.role !== 'tradesperson') return null
-        const tokenId = btoa(token).replace(/\+/g, '-').replace(/\//g, '_')
-        const { doc, setDoc, serverTimestamp, collection, query, where, getDocs, deleteDoc } = await import('firebase/firestore')
-        const firestore = (nuxt as any).$firestore
-        await setDoc(doc(firestore, 'tradespeople', uid, 'fcmTokens', tokenId), {
-          token,
-          platform: 'web',
-          userAgent: navigator.userAgent,
-          origin: location.origin,
-          createdAt: serverTimestamp(),
-          lastSeenAt: serverTimestamp()
-        }, { merge: true })
-        // Dedupe: obriši stare tokene za isti uređaj (origin + userAgent)
-        try {
-          const colRef = collection(firestore, 'tradespeople', uid, 'fcmTokens')
-          const q = query(colRef, where('origin', '==', location.origin))
-          const snap = await getDocs(q)
-          for (const d of snap.docs) {
-            const data = d.data() as any
-            if (d.id !== tokenId && data?.userAgent === navigator.userAgent) {
-              await deleteDoc(d.ref)
-            }
-          }
-        } catch (e) {
-          console.warn('[messaging] dedupe tokens skipped', e)
-        }
-        return token
       })()
-      try {
-        return await getAndSaveInFlight
-      } finally {
-        getAndSaveInFlight = null
+      syncByUser.set(user, request)
+      try { return await request } finally {
+        if (syncByUser.get(user) === request) syncByUser.delete(user)
       }
     }
 
-    onMessage(messaging, (payload) => {
-      if (import.meta.dev) {
-        console.log('[messaging] foreground message', payload)
-      }
-      try {
-        // If a Majstor tab is open but not visible/focused, FCM may still deliver the message
-        // to the page (onMessage) instead of the service worker. In that case, show a
-        // browser notification to preserve the expected "background" UX.
-        if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
-        const isHidden = typeof document !== 'undefined' && document.visibilityState !== 'visible'
-        const noFocus = typeof document !== 'undefined' && typeof document.hasFocus === 'function' ? !document.hasFocus() : false
-        if (!isHidden && !noFocus) return
-
-        const data: any = (payload as any)?.data || {}
-        const title = (data?.title || 'Novi posao').toString()
-        const body = (data?.body || 'Pogledajte detalje u MajstorSada').toString()
-        const link = (data?.link || '/majstor/dashboard').toString()
-        const n = new Notification(title, { body, data: { ...data, link }, icon: '/favicon.ico' })
-        n.onclick = () => {
-          try { window.focus() } catch { /* noop */ }
-          try { window.location.href = link } catch { /* noop */ }
-          try { n.close() } catch { /* noop */ }
-        }
-      } catch {
-        // ignore
-      }
-    })
-
-    // Proaktivna registracija: čim je korisnik prijavljen i dozvola granted
-    try {
-      const { useAuthStore } = await import('@/stores/auth')
-      const auth = useAuthStore()
-      await auth.ensureAuthReady()
-      if (auth.currentUser && auth.role === 'tradesperson' && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-        await getAndSaveFcmToken()
-      }
-    } catch (e) {
-      console.warn('[messaging] proactive token sync skipped', e)
+    // Start promptly, but never make page hydration wait for push infrastructure.
+    // The dashboard and the manual button share this same initialization and token sync.
+    void ensureMessagingReady()
+    if (auth.currentUser && auth.role === 'tradesperson' && Notification.permission === 'granted') {
+      void getAndSaveFcmToken()
     }
-
-    return {
-      provide: {
-        fcm: { requestPermission, getAndSaveFcmToken }
-      }
-    }
+    return { provide: { fcm: { requestPermission, getAndSaveFcmToken } } }
   }
 })
-
-

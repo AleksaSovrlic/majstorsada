@@ -250,6 +250,7 @@ useSeoMeta({
 })
 
 const auth = useAuthStore()
+const nuxt = useNuxtApp()
 const tpStore = useTradespersonStore()
 const newJobs = ref<Array<any>>([])
 const activeJobs = ref<Array<any>>([])
@@ -365,12 +366,12 @@ onMounted(async () => {
   if (auth.currentUser) {
     tpStore.subscribeProfile(auth.currentUser.uid)
   }
+  // Job feeds must not wait for the notification service.
+  startOwnedFeeds()
   // Proaktivna sinhronizacija FCM tokena
   if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-    const nuxt = useNuxtApp() as any
-    await nuxt.$fcm?.getAndSaveFcmToken?.()
+    void nuxt.$fcm.getAndSaveFcmToken()
   }
-  startOwnedFeeds()
 })
 
 watch(
@@ -394,8 +395,7 @@ watch(() => auth.currentUser?.uid, () => {
   }
   startOwnedFeeds()
   if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-    const nuxt = useNuxtApp() as any
-    nuxt.$fcm?.getAndSaveFcmToken?.()
+    void nuxt.$fcm.getAndSaveFcmToken()
   }
 })
 

@@ -1,6 +1,6 @@
 # Pre-marketing work packages
 
-Updated 13 September 2026 after package 3 production deployment and automated verification; packages 1 and 2 are already production-released and owner-accepted. The remaining order below is a proposal, not approval to implement every package. Prepare each implementation plan against the then-current code and agree its scope before starting.
+Updated 17 September 2026 after local startup optimization and verification; packages 1–3 are production-released and owner-accepted. Startup optimization is production-released and owner-accepted, including confirmed real push delivery; Git commit/push is authorized. The remaining order below is a proposal, not approval to implement every package. Prepare each implementation plan against the then-current code and agree its scope before starting.
 
 ## Completed foundations
 
@@ -9,11 +9,17 @@ Updated 13 September 2026 after package 3 production deployment and automated ve
 - Package 2 centralized role registration and job operations on the server, separated private contact, introduced authenticated photo delivery, and made registration/job submission recoverable after interruptions. One acceptance debits one token; repeat acceptance does not debit twice.
 - Package 2 passed 96 security tests, emulator browser workflows, production API/Storage checks and owner-reported manual live checks. Production release and cost assumptions are recorded in phase2-release.md and blaze-model.md.
 
-## Current package: dependency maintenance — production released and owner-accepted
+## Package 3: dependency maintenance — production released and owner-accepted
 
 Package 3 updates the supported Firebase/Nuxt toolchain and adds the reviewed SSR manifest/lockfile as source artifacts for repeatable installs. Runtime and source/tool audits have no high/critical findings in the reviewed snapshot; remaining moderate findings have individual applicability notes. A stable browser-mounted private entry avoids hydration mismatches when browser-only Auth redirects before mount, while public pages retain SSR/prerendering and private routes remain noindex.
 
 Local validation passed: 98 security tests, 13 build guards, emulator HTTP/business browser flows with hydration-error checking, and compiled SSR/public SEO plus 12 private-route checks. See phase3-report.md for versions, scope, evidence and limitations. Production was published after owner approval; live technical/browser/business checks passed and existing data was preserved. See phase3-release.md. The owner subsequently confirmed the manual live checks passed and authorized the Git commit/push. Initial linked JS/CSS grew by about 74 KB gzip; measure real loading and optimize public-page delivery before marketing.
+
+## Startup optimization — production released and owner-accepted
+
+The owner approved removing notification initialization from the application/header startup path, followed by measurement and regression checks. The initial Auth and server role gate remains unchanged; broader early public-page interactivity has not been introduced. Notification setup/token synchronization run independently, share concurrent work for the same session, and stop stale-session persistence/cleanup. Tradesperson job feeds also start without awaiting notification synchronization.
+
+All 27 targeted lifecycle tests, 98 security tests, 13 build guards, the production build, compiled startup/SSR browser checks and the complete emulator business workflow passed. A controlled 2-second notification delay no longer delays the header: median time from role response to header changed from 2081 ms to 74 ms. This is a synthetic-delay measurement, not a production latency percentile; role verification still takes its normal time. There are no new runtime dependencies, background polling, recurring account reads or instance-budget changes. See [startup-report.md](startup-report.md) for the full measurements, limitations and release checklist. The owner approved production deployment, which completed with matching build identities, preserved budgets/rules/data, live browser/startup checks and successful service worker activation; see [startup-release.md](startup-release.md). The owner subsequently confirmed the live checks and receipt of a real push notification, and explicitly authorized the Git commit/push.
 
 ## Following package: abuse prevention and cost control
 

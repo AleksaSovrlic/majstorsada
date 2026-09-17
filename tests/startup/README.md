@@ -1,0 +1,11 @@
+# Startup and notification regressions
+
+Run `npm run test:startup` for the notification lifecycle, dashboard mount hook and service worker tests. Node 24's VM module flag and TypeScript stripping are used only by the tests. They execute the actual source with isolated Firebase/browser adapters; no runtime dependency was added.
+
+Run `npm run build`, then `npm run test:startup:browser` for the compiled-app browser checks. Requires the same Python/Playwright environment as tests/e2e (see `tests/e2e/README.md`). Set `E2E_PYTHON` to select Python and `E2E_BROWSER_CHANNEL` to select the installed browser; the startup probe defaults to Edge. Port 3344 must be free. The runner owns and stops its server tree.
+
+The browser suite intercepts all Auth and account API calls with synthetic fixtures and blocks other external requests. It persists a synthetic login through Firebase's real browser persistence, then opens fresh browser contexts for three repetitions of each scenario: immediate responses, notification setup delayed 2 seconds, account lookup delayed 1 second, and both delays. It asserts that account verification still precedes application mount, the header does not wait for notifications, navigation retains the selected service, and only one account lookup occurs. No email, SMS, push, or production database operation is performed.
+
+`STARTUP_STAGE=before` measures an already compiled old build and omits the assertions that specifically require the optimization. Measurements are saved to ignored `.firebase/startup/before.json` and `after.json`. Do not present these synthetic latency measurements as live-user percentiles or as the actual production API latency.
+
+The lifecycle suite covers single-flight initialization/token sync, browser user activation for the permission prompt, unsupported browsers, initialization/token/write failures and explicit retry, logout and account replacement during async work, permission revocation, selective token deduplication, foreground/background message behavior and job-feed startup while notification work is pending. It does not prove delivery through Google's live FCM infrastructure or OS notification settings; release verification must include an actual recipient device.

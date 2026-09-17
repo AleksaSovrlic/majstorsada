@@ -14,7 +14,9 @@
     "ssr:refresh": "nuxt build && node tools/prepare-ssr.mjs --refresh",
     "test:build": "node --test tests/build/ssr-deps.test.mjs",
     "test:e2e": "node tests/e2e/run.mjs",
-    "test:ssr": "node tests/build/run.mjs"
+    "test:ssr": "node tests/build/run.mjs",
+    "test:startup": "node --experimental-vm-modules --test tests/startup/messaging.test.mjs",
+    "test:startup:browser": "node tests/startup/run.mjs"
   },
   "dependencies": {
     "@nuxtjs/robots": "6.2.2",
