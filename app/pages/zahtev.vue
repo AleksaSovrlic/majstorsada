@@ -6,6 +6,7 @@
         Izaberite kategoriju i opišite problem. Majstori su spremni.
       </p>
 
+<p class="mt-3 text-sm text-slate-600">Najviše dva nova zahteva u 24 sata. Zahtev je dostupan majstorima 24 sata od objavljivanja.</p>
       <form class="mt-5 space-y-4" @submit.prevent="submit">
         <fieldset class="space-y-4" :disabled="submitting || !!createdJobId || recovering">
         <div>
@@ -207,6 +208,17 @@ onMounted(async () => {
   try {
     const tip = route.query.tip
     if (typeof tip === 'string') specializationRequired.value = mapTipToSpecialization(tip) || ''
+    if (typeof route.query.repeat === 'string' && /^[a-zA-Z0-9_-]{16,100}$/.test(route.query.repeat)) {
+      const snap = await getDocFromServer(doc($firestore, 'jobs', route.query.repeat))
+      const job = snap.data()
+      if (!job || job.clientId !== authStore.currentUser?.uid || job.status !== 'expired') throw new Error('Zahtev nije dostupan za ponovno slanje.')
+      const contact = await getDocFromServer(doc($firestore, 'jobs', snap.id, 'private', 'contact'))
+      problemDescription.value = job.problemDescription; addressText.value = job.address
+      selectedLocation.value = { address: job.address, coordinates: { lat: job.coordinates.latitude, lng: job.coordinates.longitude }, city: job.city }
+      contactPhone.value = contact.data()?.contactPhone || ''; specializationRequired.value = job.specializationRequired
+      // Photographs are deliberately reselected; no persistent URL or implicit copy.
+      return
+    }
     const saved = typeof route.query.resume === 'string' ? route.query.resume : localStorage.getItem(draftKey())
     if (saved && /^[a-zA-Z0-9_-]{16,100}$/.test(saved)) {
       requestId.value = saved

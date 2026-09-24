@@ -251,3 +251,12 @@ test('background worker fallback displays a push when Firebase initialization fa
   await pending
   assert.equal(f.shown.length, 1); assert.equal(f.shown[0].title, 'Fallback job')
 })
+
+test('Repeated background delivery uses the same visible notification tag', async () => {
+  const f = workerFixture()
+  const payload = { data: { jobId: 'repeat-job', title: 'Job' } }
+  await f.deliver(payload); await f.deliver(payload)
+  assert.equal(f.shown[0].options.tag, 'job-repeat-job')
+  assert.equal(f.shown[1].options.tag, f.shown[0].options.tag)
+  assert.equal(f.shown[1].options.renotify, false)
+})

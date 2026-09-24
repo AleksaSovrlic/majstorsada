@@ -54,6 +54,7 @@
         </table>
       </div>
     </div>
+    <PageControls :loading="jobPages.loading.value" :more="jobPages.hasMore.value" :error="jobPages.error.value" @more="jobPages.more" @refresh="jobPages.refresh" />
   </div>
 </template>
 
@@ -93,7 +94,9 @@ type AdminJob = {
   acceptedAt?: any
   completedAt?: any
 }
-const jobs = ref<AdminJob[]>([])
+const jobPages = usePagedQuery(20)
+const activeJobs = ref<any[]>([])
+const jobs = computed(() => [...activeJobs.value, ...jobPages.rows.value])
 
 async function callUpdate(delta: number) {
   if (!profile.value) return
@@ -162,11 +165,13 @@ onMounted(() => {
     loading.value = false
   })
 
-  // Jobs history for this tradesperson (real-time)
+  // History loads on demand; accepted work remains live.
   const col = collection($firestore, 'jobs')
-  const q = query(col, where('acceptedByTradespersonId', '==', id), orderBy('createdAt', 'desc'))
-  unsubJobs = onSnapshot(q, (snap) => {
-    jobs.value = snap.docs.map((d) => ({ jobId: d.id, ...(d.data() as any) })) as AdminJob[]
+  const q = query(col, where('acceptedByTradespersonId', '==', id), where('status', 'in', ['completed']), orderBy('createdAt', 'desc'))
+  jobPages.reset(q); void jobPages.more()
+  unsubJobs = onSnapshot(query(collection($firestore, 'jobs'), where('acceptedByTradespersonId', '==', id), where('status', 'in', ['accepted'])), snap => {
+    if (activeJobs.value.length && snap.docChanges().some(change => change.type === 'removed')) void jobPages.refresh()
+    activeJobs.value = snap.docs.map(doc => ({ ...doc.data(), jobId: doc.id }))
   })
 })
 

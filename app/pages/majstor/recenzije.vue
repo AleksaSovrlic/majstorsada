@@ -83,13 +83,14 @@
           </div>
         </article>
       </div>
+      <PageControls :loading="loading" :more="pages.hasMore.value" :error="errorMsg" @more="pages.more" @refresh="pages.refresh" />
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { collection, onSnapshot, orderBy, query, where } from 'firebase/firestore'
+import { onMounted } from 'vue'
+import { collection, orderBy, query, where } from 'firebase/firestore'
 import { useAuthStore } from '@/stores/auth'
 
 definePageMeta({ layout: 'majstor', middleware: 'auth' })
@@ -101,10 +102,8 @@ useSeoMeta({
 })
 
 const auth = useAuthStore()
-const reviews = ref<any[]>([])
-const loading = ref(true)
-const errorMsg = ref('')
-let unsub: (() => void) | null = null
+const pages = usePagedQuery(3)
+const reviews = pages.rows, loading = pages.loading, errorMsg = pages.error
 
 onMounted(async () => {
   await auth.ensureAuthReady()
@@ -119,37 +118,12 @@ onMounted(async () => {
     col,
     where('acceptedByTradespersonId', '==', uid),
     where('status', '==', 'completed'),
+    where('rating', 'in', [1, 2, 3, 4, 5]),
     orderBy('completedAt', 'desc')
   )
-  unsub = onSnapshot(
-    q,
-    (snap) => {
-      const all = snap.docs.map((d) => ({ jobId: d.id, ...(d.data() as any) }))
-      // Only rated completed jobs belong to "Recenzije"
-      reviews.value = all
-        .filter((j) => typeof j.rating === 'number' && j.rating >= 1 && j.rating <= 5)
-        .map((j) => ({
-          jobId: j.jobId,
-          problemDescription: j.problemDescription,
-          rating: j.rating,
-          ratingComment: (j.ratingComment || '').toString().trim(),
-          ratingAt: j.ratingAt,
-          completedAt: j.completedAt
-        }))
-      loading.value = false
-      errorMsg.value = ''
-    },
-    (err) => {
-      console.warn('[recenzije] onSnapshot error', err)
-      errorMsg.value = 'Ne mogu da učitam recenzije.'
-      loading.value = false
-    }
-  )
+  pages.reset(q); void pages.more()
 })
 
-onBeforeUnmount(() => {
-  if (unsub) { unsub(); unsub = null }
-})
 
 function formatTimestamp(ts: any): string {
   if (!ts) return ''

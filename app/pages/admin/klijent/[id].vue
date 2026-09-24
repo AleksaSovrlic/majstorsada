@@ -42,6 +42,7 @@
         </table>
       </div>
     </div>
+    <PageControls :loading="jobPages.loading.value" :more="jobPages.hasMore.value" :error="jobPages.error.value" @more="jobPages.more" @refresh="jobPages.refresh" />
   </div>
 </template>
 
@@ -57,7 +58,9 @@ const client = ref<any | null>(null)
 const loading = ref(true)
 let unsubClient: (() => void) | null = null
 let unsubJobs: (() => void) | null = null
-const jobs = ref<any[]>([])
+const jobPages = usePagedQuery(20)
+const activeJobs = ref<any[]>([])
+const jobs = computed(() => [...activeJobs.value, ...jobPages.rows.value])
 
 onMounted(() => {
   const id = String(route.params.id || '')
@@ -70,9 +73,11 @@ onMounted(() => {
     client.value = snap.exists() ? ({ uid: snap.id, ...(snap.data() as any) }) : null
     loading.value = false
   })
-  const q = query(collection($firestore, 'jobs'), where('clientId', '==', id), orderBy('createdAt', 'desc'))
-  unsubJobs = onSnapshot(q, (snap) => {
-    jobs.value = snap.docs.map((d) => ({ jobId: d.id, ...(d.data() as any) }))
+  const q = query(collection($firestore, 'jobs'), where('clientId', '==', id), where('status', 'in', ['completed', 'canceled', 'expired']), orderBy('createdAt', 'desc'))
+  jobPages.reset(q); void jobPages.more()
+  unsubJobs = onSnapshot(query(collection($firestore, 'jobs'), where('clientId', '==', id), where('status', 'in', ['pending', 'accepted'])), snap => {
+    if (activeJobs.value.length && snap.docChanges().some(change => change.type === 'removed')) void jobPages.refresh()
+    activeJobs.value = snap.docs.map(doc => ({ ...doc.data(), jobId: doc.id }))
   })
 })
 

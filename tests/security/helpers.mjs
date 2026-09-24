@@ -46,7 +46,7 @@ export function job(clientId, extra = {}) {
     status: 'pending', specializationRequired: 'vodoinstalater', city: 'Beograd',
     problemDescription: 'Test popravka', location: 'Test adresa 1', address: 'Test adresa 1',
     coordinates: new adminFirestore.GeoPoint(44.8, 20.46), geohash: 'sry',
-    imageUrl: null, imagesReady: true, createdAt: new Date(1000), ...extra,
+    imageUrl: null, imagesReady: true, createdAt: new Date(1000), expiresAt: new Date(Date.now() + 86400000), ...extra,
   }
 }
 after(async () => {

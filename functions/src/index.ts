@@ -9,6 +9,11 @@ import { getMessaging } from 'firebase-admin/messaging'
 import { BUILD_SHA } from './version'
 import { setGlobalOptions } from 'firebase-functions/v2'
 import * as lifecycle from './jobLifecycle'
+import { consumeBurst } from './requestBudget'
+import { photoDeletionAt, isExpired } from './jobPolicy'
+import { runJobMaintenance } from './jobMaintenance'
+import { onSchedule } from 'firebase-functions/v2/scheduler'
+import { defineBoolean } from 'firebase-functions/params'
 setGlobalOptions({ region: 'europe-west3', minInstances: 0, maxInstances: 3, memory: '256MiB', timeoutSeconds: 60, concurrency: 80 })
 
 // Emulator connections use the same Admin SDK without a service-account key.
@@ -52,7 +57,6 @@ async function verifyBearer(req: any): Promise<lifecycle.Actor | null> {
 
 // Each trigger logs under its own name, so a push can be traced back to the trigger that sent it.
 type PushEventName = 'notifyOnJobCreated' | 'notifyOnJobImagesReady'
-type TokenRef = { token: string; refPath: string }
 
 async function sendJobAvailablePush(opts: {
   event: PushEventName
@@ -63,83 +67,64 @@ async function sendJobAvailablePush(opts: {
   const { event, jobId, specializationRequired, location } = opts
   const db = getFirestore()
 
-  const snapshot = await db
-    .collection('tradespeople')
-    .where('specialization', '==', specializationRequired)
-    .where('status', '==', 'available')
-    .get()
-
-  logger.info(`${event}: matching tradespeople`, {
-    count: snapshot.size,
-    specializationRequired,
-    jobId
+  const jobRef = db.doc('jobs/' + jobId), stateRef = jobRef.collection('system').doc('notification')
+  const leaseId = crypto.randomUUID(), began = Date.now()
+  const state = await db.runTransaction(async tx => {
+    const [jobSnap, stateSnap] = await tx.getAll(jobRef, stateRef)
+    const job = jobSnap.data(), state = stateSnap.data() || {}
+    if (!job || job.status !== 'pending' || job.imagesReady === false || isExpired(job) || state.done) return null
+    if (state.leaseUntil > Date.now()) throw new Error('Notification delivery is already running')
+    tx.set(stateRef, { ...state, leaseId, leaseUntil: Date.now() + 120_000 })
+    return state
   })
-
-  const tokenRefs: TokenRef[] = []
-  for (const tpSnap of snapshot.docs) {
-    const tpId = tpSnap.id
-    const tSnap = await db.collection('tradespeople').doc(tpId).collection('fcmTokens').get()
-    tSnap.forEach((d) => {
-      const token = (d.data() as any)?.token
-      if (token) tokenRefs.push({ token, refPath: d.ref.path })
-    })
-  }
-
-  if (tokenRefs.length === 0) {
-    logger.info(`${event}: no tokens to notify`, { jobId })
-    return
-  }
-
+  if (!state) return
+  let cursor = state.cursor || '', success = 0, failure = 0
   const baseUrl = process.env.WEB_BASE_URL || (process.env.NODE_ENV === 'development' ? 'http://localhost:3333' : '')
   const link = baseUrl ? `${baseUrl}/majstor/dashboard` : '/majstor/dashboard'
-  const messageBase = {
-    // strict data-only payload; SW renders
-    data: {
-      title: 'Novi posao dostupan',
-      body: `${specializationRequired}: ${location || ''}`.trim(),
-      link,
-      jobId,
-    },
-    webpush: { fcmOptions: { link } }
-  }
-
-  const chunkSize = 500
-  let totalSuccess = 0
-  let totalFailure = 0
-  const invalidCodes = new Set([
-    'messaging/registration-token-not-registered',
-    'messaging/invalid-registration-token'
-  ])
-  const toDeletePaths: string[] = []
-
-  for (let i = 0; i < tokenRefs.length; i += chunkSize) {
-    const chunk = tokenRefs.slice(i, i + chunkSize)
-    const tokens = chunk.map((c) => c.token)
-    const res = await getMessaging().sendEachForMulticast({ tokens, ...(messageBase as any) })
-    totalSuccess += res.successCount
-    totalFailure += res.failureCount
-    if (res.failureCount > 0) {
-      res.responses.forEach((r, idx) => {
-        if (!r.success) {
-          const token = tokens[idx]
-          const tokenSuffix = token ? token.slice(-8) : 'unknown'
-          const code = (r.error as any)?.code
-          const message = r.error?.message
-          logger.error(`${event}: send failure`, { idx, code, message, tokenSuffix, jobId })
-          if (r.error && invalidCodes.has(code)) toDeletePaths.push(chunk[idx].refPath)
+  const invalidCodes = new Set(['messaging/registration-token-not-registered', 'messaging/invalid-registration-token'])
+  try {
+    while (true) {
+      if (Date.now() - began > 40_000) throw new Error('Notification page budget reached; continue on retry')
+      const base = db.collection('tradespeople').where('specialization', '==', specializationRequired).where('status', '==', 'available').orderBy('__name__').limit(20)
+      const page = await (cursor ? base.startAfter(cursor) : base).get()
+      if (page.empty) { await stateRef.update({ done: true, leaseUntil: 0 }); break }
+      for (const tp of page.docs) {
+        let tokenCursor: string | null = state.tokenOwner === tp.id ? state.tokenCursor || null : null
+        while (true) {
+          const tokensBase = tp.ref.collection('fcmTokens').orderBy('__name__').limit(100)
+          const tokenPage = await (tokenCursor ? tokensBase.startAfter(tokenCursor) : tokensBase).get()
+          const docs = tokenPage.docs.filter(doc => typeof doc.data().token === 'string')
+          if (docs.length) {
+            const result = await getMessaging().sendEachForMulticast({ tokens: docs.map(doc => doc.data().token), data: { title: 'Novi posao dostupan', body: `${specializationRequired}: ${location || ''}`.trim(), link, jobId }, webpush: { fcmOptions: { link } } })
+            success += result.successCount; failure += result.failureCount
+            const invalid = docs.filter((_, index) => invalidCodes.has(result.responses[index].error?.code || ''))
+            if (invalid.length) { const batch = db.batch(); invalid.forEach(doc => batch.delete(doc.ref)); await batch.commit() }
+            if (result.responses.some(response => !response.success && !invalidCodes.has(response.error?.code || ''))) throw new Error('Temporary messaging failure')
+          }
+          if (tokenPage.size < 100) break
+          tokenCursor = tokenPage.docs.at(-1)!.id
+          // Persist large-device progress too, so one recipient cannot restart forever.
+          await stateRef.update({ cursor, tokenOwner: tp.id, tokenCursor })
+          if (Date.now() - began > 40_000) throw new Error('Notification token budget reached')
         }
-      })
+        cursor = tp.id
+        if (Date.now() - began > 40_000) {
+          await stateRef.update({ cursor, tokenOwner: '', tokenCursor: '' })
+          throw new Error('Notification recipient budget reached; continue on retry')
+        }
+      }
+      await stateRef.update({ cursor, tokenOwner: '', tokenCursor: '' })
+      const fresh = (await jobRef.get()).data()
+      if (!fresh || fresh.status !== 'pending' || isExpired(fresh)) { await stateRef.update({ done: true, leaseUntil: 0 }); break }
     }
+  } finally {
+    await db.runTransaction(async tx => {
+      const state = (await tx.get(stateRef)).data()
+      if (state?.leaseId === leaseId) tx.update(stateRef, { leaseUntil: 0 })
+    })
+    logger.info(`${event}: push page results`, { jobId, success, failure })
   }
 
-  logger.info(`${event}: push results`, { success: totalSuccess, failure: totalFailure, tokens: tokenRefs.length, jobId })
-
-  if (toDeletePaths.length) {
-    const batch = db.batch()
-    toDeletePaths.forEach((p) => batch.delete(db.doc(p)))
-    await batch.commit()
-    logger.info(`${event}: cleaned invalid tokens`, { count: toDeletePaths.length, jobId })
-  }
 }
 
 // Small HTTP adapter shared by the new account/job operations. Domain errors
@@ -152,6 +137,7 @@ function lifecycleEndpoint(action: (actor: lifecycle.Actor, data: any) => Promis
       const actor = await verifyBearer(req)
       if (!actor) { res.status(401).send({ error: 'Prijavite se ponovo.', code: 'unauthenticated' }); return }
       try {
+        consumeBurst(actor.uid + ':' + action.name, action.name === 'resolveAccount' ? 120 : 30)
         if (Number(req.get('content-length') || 0) > 16384) throw new HttpsError('invalid-argument', 'Zahtev je prevelik.')
         const result = await action(actor, req.body?.data || {})
         res.status(200).send({ ok: true, ...result })
@@ -169,6 +155,8 @@ export const completeRegistration = lifecycleEndpoint(lifecycle.completeRegistra
 export const createJob = lifecycleEndpoint(lifecycle.createJob)
 export const finalizeJobImages = lifecycleEndpoint(lifecycle.finalizeJobImages)
 export const acceptJob = lifecycleEndpoint(lifecycle.acceptJob)
+export const cancelJob = lifecycleEndpoint(lifecycle.cancelJob)
+export const dismissJob = lifecycleEndpoint(lifecycle.dismissJob)
 export const readJobImage = onRequest({ region: 'us-central1', concurrency: 20 }, (req, res) => {
   corsHandler(req, res, async () => {
     res.setHeader('Cache-Control', 'private, no-store')
@@ -177,11 +165,12 @@ export const readJobImage = onRequest({ region: 'us-central1', concurrency: 20 }
     const actor = await verifyBearer(req)
     if (!actor) { res.status(401).send({ error: 'Prijavite se ponovo.' }); return }
     try {
+      consumeBurst(actor.uid + ':images', 120)
       const bytes = await lifecycle.readJobImage(actor, req.body?.data || {})
       res.setHeader('Content-Type', 'image/jpeg')
       res.status(200).send(bytes)
     } catch (error: any) {
-      const status = error instanceof HttpsError ? ({ 'invalid-argument': 400, 'not-found': 404, 'permission-denied': 403, 'failed-precondition': 412 } as Record<string, number>)[error.code] || 500 : 500
+      const status = error instanceof HttpsError ? ({ 'invalid-argument': 400, 'not-found': 404, 'permission-denied': 403, 'failed-precondition': 412, 'resource-exhausted': 429 } as Record<string, number>)[error.code] || 500 : 500
       res.status(status).send({ error: status === 500 ? 'Fotografija trenutno nije dostupna.' : error.message })
     }
   })
@@ -204,6 +193,7 @@ export const submitJobRating = onRequest({ region: 'europe-west3' }, (req, res) 
     }
 
     try {
+      consumeBurst(auth.uid + ':submitJobRating', 30)
       lifecycle.requireWritesEnabled()
       await lifecycle.requireRole(auth.uid, 'client')
       const db = getFirestore()
@@ -262,6 +252,7 @@ export const submitJobRating = onRequest({ region: 'europe-west3' }, (req, res) 
         'permission-denied': 403,
         'unavailable': 503,
         'already-exists': 409,
+        'resource-exhausted': 429,
       } as Record<string, number>)[stringCode] : undefined
       const status = Number.isFinite(error?.code) ? error.code : (statusFromString || 500)
       const message = error?.message || 'Unexpected error during submitJobRating.'
@@ -288,6 +279,7 @@ export const markJobAsComplete = onRequest({ region: 'europe-west3' }, (req, res
     }
 
     try {
+      consumeBurst(auth.uid + ':markJobAsComplete', 30)
       lifecycle.requireWritesEnabled()
       await lifecycle.requireRole(auth.uid, 'tradesperson')
       logger.info('markJobAsComplete request', { jobId, uid: auth.uid })
@@ -305,12 +297,12 @@ export const markJobAsComplete = onRequest({ region: 'europe-west3' }, (req, res
         if (job.status !== 'accepted') {
           return Promise.reject({ code: 412, message: 'Job is not in an active state.' })
         }
-        tx.update(jobRef, { status: 'completed', completedAt: FieldValue.serverTimestamp() })
+        tx.update(jobRef, { status: 'completed', completedAt: FieldValue.serverTimestamp(), photosDeleteAt: photoDeletionAt() })
       })
       logger.info('markJobAsComplete success', { jobId, uid: auth.uid })
       return res.status(200).send({ ok: true, jobId })
     } catch (error: any) {
-      const status = error?.code && Number.isFinite(error.code) ? error.code : ({ 'permission-denied': 403, 'unavailable': 503, 'failed-precondition': 412 } as Record<string, number>)[error?.code] || 500
+      const status = error?.code && Number.isFinite(error.code) ? error.code : ({ 'permission-denied': 403, 'unavailable': 503, 'failed-precondition': 412, 'resource-exhausted': 429 } as Record<string, number>)[error?.code] || 500
       const message = error?.message || 'Unexpected error during markJobAsComplete.'
       return res.status(status).send({ error: message })
     }
@@ -351,6 +343,7 @@ export const updateTokensByAdmin = onRequest({ region: 'europe-west3' }, (req, r
       }
 
       const decoded = await getAuth().verifyIdToken(idToken)
+      consumeBurst(decoded.uid + ':updateTokensByAdmin', 30)
       // Check admins collection for role
       const db = getFirestore()
       const adminDoc = await db.collection('admins').doc(decoded.uid).get()
@@ -386,7 +379,7 @@ export const updateTokensByAdmin = onRequest({ region: 'europe-west3' }, (req, r
     } catch (error: any) {
       logger.error('updateTokensByAdmin failed', { message: error?.message })
       if (error instanceof HttpsError) {
-        const statusMap: Record<string, number> = { 'not-found': 404, 'failed-precondition': 412, 'permission-denied': 403, 'unavailable': 503 }
+        const statusMap: Record<string, number> = { 'not-found': 404, 'failed-precondition': 412, 'permission-denied': 403, 'unavailable': 503, 'resource-exhausted': 429 }
         const status = statusMap[error.code] || 500
         return res.status(status).send({ error: { message: error.message } })
       }
@@ -401,7 +394,7 @@ export const updateTokensByAdmin = onRequest({ region: 'europe-west3' }, (req, r
 // the document id comes from `event.params.jobId` rather than from the snapshot.
 
 export const notifyOnJobCreated = onDocumentCreated(
-  { document: 'jobs/{jobId}', region: 'europe-west3' },
+  { document: 'jobs/{jobId}', region: 'europe-west3', retry: true },
   async (event) => {
     const jobData = event.data?.data()
     if (!jobData) {
@@ -433,7 +426,7 @@ export const notifyOnJobCreated = onDocumentCreated(
         location: jobData.location
       })
     } catch (err: any) {
-      logger.error('notifyOnJobCreated: query failed', { message: err?.message })
+      logger.error('notifyOnJobCreated: query failed', { message: err?.message }); throw err
     }
   }
 )
@@ -445,7 +438,7 @@ export const notifyOnJobCreated = onDocumentCreated(
 // A request without photos never sets the flag, so it is notified by notifyOnJobCreated instead
 // and never reaches this one. Every other document update is woken up here and filtered out below.
 export const notifyOnJobImagesReady = onDocumentUpdated(
-  { document: 'jobs/{jobId}', region: 'europe-west3' },
+  { document: 'jobs/{jobId}', region: 'europe-west3', retry: true },
   async (event) => {
     const before = event.data?.before.data() as any
     const after = event.data?.after.data() as any
@@ -468,9 +461,16 @@ export const notifyOnJobImagesReady = onDocumentUpdated(
         location: after.location
       })
     } catch (err: any) {
-      logger.error('notifyOnJobImagesReady: failed', { message: err?.message })
+      logger.error('notifyOnJobImagesReady: failed', { message: err?.message }); throw err
     }
   }
 )
 
 
+
+const maintenanceEnabled = defineBoolean('JOB_MAINTENANCE_ENABLED', { default: false })
+export const maintainJobs = onSchedule({ schedule: 'every 10 minutes', timeZone: 'UTC', maxInstances: 1, concurrency: 1, timeoutSeconds: 300 }, async () => {
+  const report = await runJobMaintenance(!maintenanceEnabled.value())
+  if (report.failures.length) logger.error('Job maintenance incomplete; retained candidates will retry', report)
+  else logger.info('Job maintenance', report)
+})

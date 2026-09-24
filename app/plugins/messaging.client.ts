@@ -49,7 +49,7 @@ export default defineNuxtPlugin({
             const title = (data?.title || 'Novi posao').toString()
             const body = (data?.body || 'Pogledajte detalje u MajstorSada').toString()
             const link = (data?.link || '/majstor/dashboard').toString()
-            const n = new Notification(title, { body, data: { ...data, link }, icon: '/favicon.ico' })
+            const n = new Notification(title, { body, data: { ...data, link }, icon: '/favicon.ico', tag: data.jobId ? 'job-' + data.jobId : undefined })
             n.onclick = () => {
               try { window.focus() } catch { /* noop */ }
               try { window.location.href = link } catch { /* noop */ }

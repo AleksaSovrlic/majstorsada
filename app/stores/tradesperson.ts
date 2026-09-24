@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { doc, onSnapshot, updateDoc } from 'firebase/firestore'
+import { useApi } from '@/utils/api'
 import type { SupportedCity } from '@/utils/cities'
 
 export interface TradespersonProfile {
@@ -77,14 +78,7 @@ export const useTradespersonStore = defineStore('tradesperson', {
     async dismissJob(jobId: string) {
       const profile = this.profile
       if (!profile) return
-      const { $firestore } = useNuxtApp()
-      const ref = doc($firestore, 'tradespeople', profile.uid)
-      try {
-        await updateDoc(ref, { dismissedJobs: (await import('firebase/firestore')).arrayUnion(jobId) })
-      } catch (e: any) {
-        const msg = e?.message || 'Ne mogu da sačuvam odbijanje posla.'
-        throw new Error(msg)
-      }
+      await useApi()('dismissJob', { jobId })
     }
   }
 })

@@ -28,6 +28,7 @@
         </tbody>
       </table>
     </div>
+    <PageControls :loading="tradesPage.loading.value" :more="tradesPage.hasMore.value" :error="tradesPage.error.value" @more="tradesPage.more" @refresh="tradesPage.refresh" />
   </div>
   <div class="space-y-6 mt-8">
     <h2 class="text-xl font-bold text-gray-900">Svi Klijenti</h2>
@@ -54,60 +55,33 @@
         </tbody>
       </table>
     </div>
+    <PageControls :loading="clientsPage.loading.value" :more="clientsPage.hasMore.value" :error="clientsPage.error.value" @more="clientsPage.more" @refresh="clientsPage.refresh" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref } from 'vue'
-import { collection, onSnapshot, query } from 'firebase/firestore'
+import { onMounted } from 'vue'
+import { collection, query, orderBy, documentId } from 'firebase/firestore'
 import { useAuthStore } from '@/stores/auth'
 
 definePageMeta({ layout: 'admin', middleware: 'admin-auth' })
 
-interface AdminTradesperson {
-  uid: string
-  displayName?: string
-  email?: string
-  balanceTokens?: number
-}
-
-const tradespeople = ref<AdminTradesperson[]>([])
-let unsub: (() => void) | null = null
+const tradesPage = usePagedQuery(20)
+const tradespeople = tradesPage.rows
 const auth = useAuthStore()
 
-type AdminClient = { uid: string; email?: string; createdAt?: any }
-const clients = ref<AdminClient[]>([])
-let unsubClients: (() => void) | null = null
+const clientsPage = usePagedQuery(20)
+const clients = clientsPage.rows
 
 onMounted(async () => {
   await auth.ensureAuthReady()
   const { $firestore } = useNuxtApp()
-  const col = collection($firestore, 'tradespeople')
-  const q = query(col)
-  unsub = onSnapshot(q, (snap) => {
-    const adminUid = auth.currentUser?.uid
-    const all = snap.docs.map((d) => ({ uid: d.id, ...(d.data() as any) }))
-    tradespeople.value = adminUid ? all.filter((t) => t.uid !== adminUid) : all
-  })
+  tradesPage.reset(query(collection($firestore, 'tradespeople'), orderBy(documentId())))
+  clientsPage.reset(query(collection($firestore, 'clients'), orderBy(documentId())))
+  void tradesPage.more(); void clientsPage.more()
 
-  // Clients table realtime
-  const clientsCol = collection($firestore, 'clients')
-  const cq = query(clientsCol)
-  unsubClients = onSnapshot(cq, (snap) => {
-    clients.value = snap.docs.map((d) => ({ uid: d.id, ...(d.data() as any) }))
-  })
 })
 
-onBeforeUnmount(() => {
-  if (unsub) {
-    unsub()
-    unsub = null
-  }
-  if (unsubClients) {
-    unsubClients()
-    unsubClients = null
-  }
-})
 </script>
 
 

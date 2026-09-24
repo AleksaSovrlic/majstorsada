@@ -61,12 +61,12 @@ for (const operation of ['add', 'change', 'remove']) {
     await denied(updateDoc(ref, { serverOnly: operation === 'remove' ? deleteField() : 'forged' }))
   })
 }
-test('Current availability, preference, dismissal and profile edits remain allowed', async () => {
+test('Availability, preference and profile edits remain allowed; dismissals are server-owned', async () => {
   const { ref, adminRef } = await tradesperson()
-  await updateDoc(ref, { status: 'available', city: 'Beograd', notificationPreference: 'push', dismissedJobs: arrayUnion('job-a') })
-  await updateDoc(ref, { status: 'unavailable', dismissedJobs: arrayUnion('job-b'), displayName: 'Drugi Majstor', phoneNumber: '+381641234568', specialization: 'električar' })
+  await updateDoc(ref, { status: 'available', city: 'Beograd', notificationPreference: 'push' })
+  await updateDoc(ref, { status: 'unavailable', displayName: 'Drugi Majstor', phoneNumber: '+381641234568', specialization: 'električar' })
   assert.equal((await adminRef.get()).data().balanceTokens, 0)
-  assert.deepEqual((await adminRef.get()).data().dismissedJobs, ['job-a', 'job-b'])
+  await denied(updateDoc(ref, { dismissedJobs: arrayUnion('forged') }))
 })
 test('First bio/avatar save, repeat avatar save and clearing bio remain allowed', async () => {
   const { uid, ref } = await tradesperson()
@@ -86,12 +86,12 @@ test('Client cannot declare or finalize image metadata directly', async () => {
   await denied(updateDoc(ref, { imagePaths: [], imagesReady: true, imagesUpdatedAt: serverTimestamp() }))
 })
 
-test('Owner can cancel a pending job and add the server cancellation timestamp', async () => {
+test('Browser cancellation is denied; server owns retention metadata', async () => {
   const { ref, adminRef } = await pendingJob()
-  await updateDoc(ref, cancelPatch())
+  await denied(updateDoc(ref, cancelPatch()))
   const data = (await adminRef.get()).data()
-  assert.equal(data.status, 'canceled')
-  assert.ok(data.canceledAt.toMillis() > 1000)
+  assert.equal(data.status, 'pending')
+  assert.equal(data.canceledAt, undefined)
 })
 for (const route of ['images', 'cancel']) {
   for (const operation of ['add', 'change', 'remove']) {

@@ -25,9 +25,11 @@ if (messaging && messaging.onBackgroundMessage) {
     const options = {
       body: data.body || 'Pogledajte detalje u MajstorSada',
       icon: '/favicon.ico',
+      tag: data.jobId ? 'job-' + data.jobId : undefined,
+      renotify: false,
       data
     }
-    self.registration.showNotification(title, options)
+    return self.registration.showNotification(title, options)
   })
   // Mark Messaging ready so push fallback can avoid duplicates
   self.__SW_MESSAGING_READY__ = true
@@ -47,6 +49,8 @@ self.addEventListener('push', (event) => {
       const options = {
         body: (data && data.body) || 'Pogledajte detalje u MajstorSada',
         icon: '/favicon.ico',
+        tag: data.jobId ? 'job-' + data.jobId : undefined,
+        renotify: false,
         data: data || {}
       }
       await self.registration.showNotification(title, options)

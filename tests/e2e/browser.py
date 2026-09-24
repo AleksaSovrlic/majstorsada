@@ -89,8 +89,11 @@ with sync_playwright() as p:
         # Availability uses the real UI/rules, no token balance is required.
         print('dashboard buttons', tp.get_by_role('button').all_text_contents(), flush=True)
         switch = tp.get_by_role('switch')
-        if switch.count(): switch.click()
-        else: tp.get_by_text('Nedostupan', exact=True).click()
+        expect(switch).to_be_visible(timeout=90000)
+        expect(switch).to_be_enabled()
+        switch.click()
+        expect(switch).to_have_attribute('aria-checked', 'true')
+        expect(tp.get_by_text('Dostupan', exact=True)).to_be_visible()
 
         customer.goto(BASE + '/login', wait_until='domcontentloaded')
         inspect(customer, '04-client-login')
@@ -164,6 +167,7 @@ with sync_playwright() as p:
         second_tp_tab.get_by_role('button', name='Odjava', exact=True).click()
         tp.wait_for_url('**/majstor/login', timeout=30000)
         expect(tp.locator('a[href="tel:+381641234567"]')).to_have_count(0)
+        inspect(tp, 'relogin-after-cross-tab-logout')
         tp.locator('input[type=email]').fill('majstor@example.test')
         tp.locator('input[type=password]').fill('TestPassword123!')
         tp.locator('button[type=submit]').click()
@@ -180,6 +184,69 @@ with sync_playwright() as p:
             customer.get_by_role('button', name='Pošalji', exact=True).click()
         assert rating.value.status == 200
         assert doc_fields('tradespeople/' + tp_uid)['ratingCount']['integerValue'] == '1'
+        # Cursor history: seven equal timestamps must paginate without omissions or duplicates.
+        client_uid = documents('clients')[0]['name'].split('/')[-1]
+        timestamp = __import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat().replace('+00:00', 'Z')
+        fixture_base = 'http://127.0.0.1:8180/v1/projects/' + PROJECT + '/databases/(default)/documents/'
+        for index in range(7):
+            http(fixture_base + 'jobs/pagination-job-' + str(index), {'fields': {
+                'clientId': {'stringValue': client_uid}, 'acceptedByTradespersonId': {'stringValue': tp_uid},
+                'status': {'stringValue': 'completed'}, 'problemDescription': {'stringValue': 'Istorija provera ' + str(index)},
+                'specializationRequired': {'stringValue': 'vodoinstalater'}, 'createdAt': {'timestampValue': timestamp},
+                'completedAt': {'timestampValue': timestamp}, 'rating': {'integerValue': '5'}
+            }}, 'PATCH')
+        customer.goto(BASE + '/klijent/dashboard', wait_until='domcontentloaded')
+        inspect(customer, '15-history-first-page')
+        expect(customer.get_by_text(re.compile('^Istorija provera [0-6]$'))).to_have_count(3)
+        customer.get_by_role('button', name='Učitaj još', exact=True).first.click()
+        expect(customer.get_by_text(re.compile('^Istorija provera [0-6]$'))).to_have_count(6)
+        customer.get_by_role('button', name='Učitaj još', exact=True).first.click()
+        expect(customer.get_by_text(re.compile('^Istorija provera [0-6]$'))).to_have_count(7)
+        tp.get_by_role('tab', name='Istorija', exact=True).click()
+        expect(tp.get_by_text(re.compile('^Istorija provera [0-6]$'))).to_have_count(3)
+        tp.get_by_role('button', name='Učitaj još', exact=True).click()
+        expect(tp.get_by_text(re.compile('^Istorija provera [0-6]$'))).to_have_count(6)
+        tp.goto(BASE + '/majstor/recenzije', wait_until='domcontentloaded')
+        inspect(tp, '16-reviews-first-page')
+        expect(tp.get_by_text(re.compile('^Istorija provera [0-6]$'))).to_have_count(3)
+        # A fully dismissed first live window must not hide the next window.
+        from datetime import datetime, timezone, timedelta
+        feed_expiry = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat().replace('+00:00', 'Z')
+        for index in range(21):
+            feed_fields = dict(fields)
+            feed_fields.update({'status': {'stringValue': 'pending'}, 'imagesReady': {'booleanValue': True}, 'imagePaths': {'arrayValue': {'values': []}}, 'problemDescription': {'stringValue': 'Ponuda provera ' + str(index)}, 'expiresAt': {'timestampValue': feed_expiry}})
+            http(fixture_base + 'jobs/feed-window-job-' + str(index).zfill(2), {'fields': feed_fields}, 'PATCH')
+            if index > 0:
+                http(fixture_base + 'tradespeople/' + tp_uid + '/dismissedJobs/feed-window-job-' + str(index).zfill(2), {'fields': {'expiresAt': {'timestampValue': feed_expiry}}}, 'PATCH')
+        tp.goto(BASE + '/majstor/dashboard', wait_until='domcontentloaded')
+        inspect(tp, '18-hidden-first-window')
+        expect(tp.get_by_role('heading', name='Pregledajte još poslova', exact=True)).to_be_visible()
+        expect(tp.get_by_text(re.compile('^Ponuda provera [0-9]+$'))).to_have_count(0)
+        tp.get_by_role('button', name='Učitaj još', exact=True).click()
+        expect(tp.get_by_text('Ponuda provera 0', exact=True)).to_be_visible()
+        # Expiration must refresh via the timer without requiring a tab reload.
+        near_expiry = (datetime.now(timezone.utc) + timedelta(seconds=3)).isoformat().replace('+00:00', 'Z')
+        http(fixture_base + 'jobs/feed-window-job-00?updateMask.fieldPaths=expiresAt', {'fields': {'expiresAt': {'timestampValue': near_expiry}}}, 'PATCH')
+        expect(tp.get_by_text('Ponuda provera 0', exact=True)).to_have_count(0, timeout=15000)
+        for index in range(21):
+            http(fixture_base + 'jobs/feed-window-job-' + str(index).zfill(2) + '?updateMask.fieldPaths=status', {'fields': {'status': {'stringValue': 'canceled'}}}, 'PATCH')
+        print('PASS: fully dismissed first window, explicit next window, automatic expiry without page reload', flush=True)
+        # Expired repeat is explicit and prefilled, without reviving the original job.
+        expired_fields = dict(fields)
+        expired_fields.update({'status': {'stringValue': 'expired'}, 'problemDescription': {'stringValue': 'Ponovi istekli zahtev'}, 'createdAt': {'timestampValue': timestamp}})
+        http(fixture_base + 'jobs/repeat-expired-job1', {'fields': expired_fields}, 'PATCH')
+        http(fixture_base + 'jobs/repeat-expired-job1/private/contact', {'fields': {'contactPhone': {'stringValue': '+381641234567'}}}, 'PATCH')
+        customer.goto(BASE + '/klijent/dashboard', wait_until='domcontentloaded')
+        inspect(customer, '17-expired-repeat')
+        customer.get_by_role('link', name='I dalje mi treba majstor — pošalji ponovo', exact=True).click()
+        expect(customer.locator('textarea')).to_have_value('Ponovi istekli zahtev')
+        expect(customer.get_by_placeholder('06x xxx xxxx')).to_have_value('+381641234567')
+        assert doc_fields('jobs/repeat-expired-job1')['status']['stringValue'] == 'expired'
+        # Fill both daily slots on the server; UI must explain why a third new request is denied.
+        http(fixture_base + 'clients/' + client_uid + '?updateMask.fieldPaths=recentJobCreations', {'fields': {'recentJobCreations': {'arrayValue': {'values': [{'timestampValue': timestamp}, {'timestampValue': timestamp}]}}}}, 'PATCH')
+        customer.get_by_role('button', name='Pronađi Majstora', exact=True).click()
+        expect(customer.get_by_text('Možete poslati najviše dva nova zahteva u poslednja 24 sata. Nastavak istog zahteva se ne računa ponovo.', exact=True)).to_be_visible(timeout=30000)
+        print('PASS: history 3/6/7 with timestamp ties, tradesperson history, filtered reviews, explicit expired repeat and daily-limit UI', flush=True)
         # Cross-role routes redirect to the actual role, never auto-create profiles.
         customer.goto(BASE + '/majstor/dashboard', wait_until='domcontentloaded')
         customer.wait_for_url('**/zahtev', timeout=30000)

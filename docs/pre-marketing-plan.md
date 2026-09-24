@@ -1,6 +1,6 @@
 # Pre-marketing work packages
 
-Updated 17 September 2026 after local startup optimization and verification; packages 1–3 are production-released and owner-accepted. Startup optimization is production-released and owner-accepted, including confirmed real push delivery; Git commit/push is authorized. The remaining order below is a proposal, not approval to implement every package. Prepare each implementation plan against the then-current code and agree its scope before starting.
+Updated 24 September 2026 after cost-control production deployment and automated verification; packages 1–3 are production-released and owner-accepted. Startup optimization is production-released and owner-accepted, including confirmed real push delivery; Git commit/push is authorized. The remaining order below is a proposal, not approval to implement every package. Prepare each implementation plan against the then-current code and agree its scope before starting.
 
 ## Completed foundations
 
@@ -21,17 +21,17 @@ The owner approved removing notification initialization from the application/hea
 
 All 27 targeted lifecycle tests, 98 security tests, 13 build guards, the production build, compiled startup/SSR browser checks and the complete emulator business workflow passed. A controlled 2-second notification delay no longer delays the header: median time from role response to header changed from 2081 ms to 74 ms. This is a synthetic-delay measurement, not a production latency percentile; role verification still takes its normal time. There are no new runtime dependencies, background polling, recurring account reads or instance-budget changes. See [startup-report.md](startup-report.md) for the full measurements, limitations and release checklist. The owner approved production deployment, which completed with matching build identities, preserved budgets/rules/data, live browser/startup checks and successful service worker activation; see [startup-release.md](startup-release.md). The owner subsequently confirmed the live checks and receipt of a real push notification, and explicitly authorized the Git commit/push.
 
-## Following package: abuse prevention and cost control
+## Current package: abuse prevention and cost control — production released and owner-accepted
 
-Review write/read abuse paths, Firebase usage alerts, unbounded feed/history queries, and pagination. Define expiration/retention for old jobs, unfinished uploads and photos according to the actual business workflow. Measure reads, writes, image traffic and storage accumulation. Avoid additional always-on services. Budget alerts and maxInstances are not spending caps.
+The owner approved two new client requests per rolling 24 hours, at most two unexpired pending requests, 24-hour publication/upload deadlines, seven-day closed-photo retention, history pages of three and admin pages of twenty. Active jobs remain live and never expire automatically. See cost-control-plan.md and cost-control-report.md for implementation, tests, pricing assumptions and staged release requirements. Production deployment and budget configuration are complete; see cost-control-release.md. The owner confirmed the live checks passed and authorized Git commit/push with the title `feat(jobs): add lifecycle policies and optimize dashboard loading`. Budget alerts and maxInstances are not spending caps.
 
 ## Following package: OTP sign-in
 
-Design phone verification and account linking while preserving existing UIDs, roles, jobs and token balances. Define retry limits, resend cooldowns, delivery failure/recovery and SMS abuse controls before enabling SMS. Review actual provider pricing and expected volume at that time. Client email remains absent from tradesperson job data; phone access still follows acceptance.
+Design email OTP and account linking while preserving existing UIDs, roles, jobs and token balances. Define verification-attempt limits, resend cooldowns, delivery failure/recovery and email abuse controls before enabling the provider. The approved direction is email OTP, not SMS OTP. Review actual provider pricing and expected volume at that time. Client email remains absent from tradesperson job data; phone access still follows acceptance.
 
 ## Final pre-marketing package: release readiness
 
-Check mobile flows, real email/SMS/push delivery as applicable, loading/error states, public-page performance, conversion tracking and operational monitoring. Integrate existing smoke tests into continuous integration. Complete a final business-workflow acceptance run and document release/recovery steps before marketing traffic is increased.
+Check mobile flows, real email OTP/push delivery, loading/error states, public-page performance, conversion tracking and operational monitoring. Integrate existing smoke tests into continuous integration. Complete a final business-workflow acceptance run and document release/recovery steps before marketing traffic is increased.
 
 ## Persistent business constraints
 

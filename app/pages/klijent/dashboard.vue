@@ -283,11 +283,11 @@
           <div class="text-base font-bold text-brand-navy">{{ accepted.length }}</div>
         </div>
         <div class="rounded-2xl bg-white/70 backdrop-blur px-3 py-2 ring-1 ring-black/5">
-          <div class="text-xs text-slate-500">Završeni</div>
+          <div class="text-xs text-slate-500">Učitani završeni</div>
           <div class="text-base font-bold text-brand-navy">{{ completed.length }}</div>
         </div>
         <div class="rounded-2xl bg-white/70 backdrop-blur px-3 py-2 ring-1 ring-black/5">
-          <div class="text-xs text-slate-500">Otkazani</div>
+          <div class="text-xs text-slate-500">Učitani zatvoreni</div>
           <div class="text-base font-bold text-brand-navy">{{ canceled.length }}</div>
         </div>
       </div>
@@ -335,10 +335,11 @@
       </div>
     </section>
 
-    <!-- Canceled (kept separate from completed history) -->
-    <section v-if="canceled.length > 0">
+    <PageControls :loading="history.loading.value" :more="history.hasMore.value" :error="history.error.value" @more="history.more" @refresh="history.refresh" />
+    <!-- Closed history -->
+    <section>
       <div class="flex items-center justify-between gap-4">
-        <h2 class="text-lg sm:text-xl font-bold text-brand-navy">Otkazani zahtevi</h2>
+        <h2 class="text-lg sm:text-xl font-bold text-brand-navy">Otkazani i istekli zahtevi</h2>
         <div class="text-sm text-slate-600">
           {{ canceled.length }} stavki
         </div>
@@ -361,12 +362,13 @@
             </div>
             <span
               class="shrink-0 inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold"
-              :class="statusPillClass('canceled')"
+              :class="statusPillClass(j.status)"
             >
-              Otkazano
+              {{ statusLabel(j.status) }}
             </span>
           </div>
 
+          <NuxtLink v-if="j.status === 'expired'" :to="'/zahtev?repeat=' + j.jobId" class="mt-3 inline-block font-semibold underline">I dalje mi treba majstor — pošalji ponovo</NuxtLink>
           <div v-if="formatTimestamp(j.canceledAt)" class="mt-3 text-xs text-slate-500">
             Otkazano: {{ formatTimestamp(j.canceledAt) }}
           </div>
@@ -374,6 +376,7 @@
       </div>
     </section>
 
+    <PageControls :loading="closed.loading.value" :more="closed.hasMore.value" :error="closed.error.value" @more="closed.more" @refresh="closed.refresh" />
     <!-- Rating modal -->
     <div v-if="showModal" class="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center p-4 z-50">
       <div class="bg-white w-full max-w-sm rounded-2xl shadow-2xl ring-1 ring-black/5 p-6">
@@ -422,7 +425,8 @@
 
 <script setup lang="ts">
 import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
-import { collection, doc, onSnapshot, orderBy, query, serverTimestamp, updateDoc, where } from 'firebase/firestore'
+import { collection, onSnapshot, orderBy, query, where } from 'firebase/firestore'
+import { useApi } from '@/utils/api'
 import { useAuthStore } from '@/stores/auth'
 import TradespersonAvatar from '@/components/TradespersonAvatar.vue'
 
@@ -431,8 +435,9 @@ definePageMeta({ layout: 'klijent', middleware: 'client-auth' })
 const auth = useAuthStore()
 const pending = ref<any[]>([])
 const accepted = ref<any[]>([])
-const completed = ref<any[]>([])
-const canceled = ref<any[]>([])
+const history = usePagedQuery(3), closed = usePagedQuery(3)
+const completed = history.rows, canceled = closed.rows
+const api = useApi()
 
 function tsMillis(ts: any): number {
   if (!ts) return 0
@@ -480,8 +485,6 @@ const historyJobs = computed<any[]>(() => {
 
 let unsubPending: (() => void) | null = null
 let unsubAccepted: (() => void) | null = null
-let unsubCompleted: (() => void) | null = null
-let unsubCanceled: (() => void) | null = null
 
 const cancelingJobIds = ref<Set<string>>(new Set())
 const cancelErrorMsg = ref('')
@@ -499,27 +502,22 @@ onMounted(async () => {
   const col = collection($firestore, 'jobs')
 
   unsubPending = onSnapshot(query(col, where('clientId', '==', user.uid), where('status', '==', 'pending')), (snap) => {
+    if (pending.value.length && snap.docChanges().some(change => change.type === 'removed')) void closed.refresh()
     pending.value = snap.docs.map((d) => ({ jobId: d.id, ...(d.data() as any) }))
   })
   unsubAccepted = onSnapshot(query(col, where('clientId', '==', user.uid), where('status', '==', 'accepted')), (snap) => {
+    if (accepted.value.length && snap.docChanges().some(change => change.type === 'removed')) void history.refresh()
     accepted.value = snap.docs.map((d) => ({ jobId: d.id, ...(d.data() as any) }))
   })
-  unsubCompleted = onSnapshot(query(col, where('clientId', '==', user.uid), where('status', '==', 'completed')), (snap) => {
-    completed.value = snap.docs.map((d) => ({ jobId: d.id, ...(d.data() as any) }))
-  })
-  unsubCanceled = onSnapshot(
-    query(col, where('clientId', '==', user.uid), where('status', '==', 'canceled'), orderBy('canceledAt', 'desc')),
-    (snap) => {
-      canceled.value = snap.docs.map((d) => ({ jobId: d.id, ...(d.data() as any) }))
-    }
-  )
+  history.reset(query(col, where('clientId', '==', user.uid), where('status', '==', 'completed'), orderBy('createdAt', 'desc')))
+  closed.reset(query(col, where('clientId', '==', user.uid), where('status', 'in', ['canceled', 'expired']), orderBy('createdAt', 'desc')))
+  void history.more(); void closed.more()
+
 })
 
 onBeforeUnmount(() => {
   if (unsubPending) { unsubPending(); unsubPending = null }
   if (unsubAccepted) { unsubAccepted(); unsubAccepted = null }
-  if (unsubCompleted) { unsubCompleted(); unsubCompleted = null }
-  if (unsubCanceled) { unsubCanceled(); unsubCanceled = null }
 })
 
 function openRating(job: any) {
@@ -546,8 +544,8 @@ async function submitRating() {
     body: JSON.stringify({ data: { jobId: ratingJobId, stars: ratingStars.value, comment: ratingComment.value } })
   })
   if (resp.ok) {
-    // Optimistic: hide modal; onSnapshot will reveal rating
     showModal.value = false
+    await history.refresh()
   }
 }
 
@@ -563,6 +561,8 @@ function statusLabel(status: string): string {
       return 'Majstor prihvatio'
     case 'completed':
       return 'Završeno'
+    case 'expired':
+      return 'Isteklo'
     case 'canceled':
       return 'Otkazano'
     default:
@@ -609,11 +609,8 @@ async function cancelJob(jobId: string) {
   cancelErrorMsg.value = ''
   cancelingJobIds.value = new Set(cancelingJobIds.value).add(jobId)
   try {
-    const { $firestore } = useNuxtApp()
-    await updateDoc(doc($firestore, 'jobs', jobId), {
-      status: 'canceled',
-      canceledAt: serverTimestamp()
-    })
+    await api('cancelJob', { jobId })
+    void closed.refresh()
     // Optimistic: immediately remove from pending list; onSnapshot will reconcile anyway.
     pending.value = pending.value.filter((j) => j.jobId !== jobId)
   } catch (e: any) {

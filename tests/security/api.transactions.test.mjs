@@ -223,3 +223,124 @@ test('Production write gate fails closed without explicit enablement', () => {
     else process.env.PUBLIC_WRITES_ENABLED = enabled
   }
 })
+
+const { DAY } = functionsRequire('./lib/jobPolicy.js')
+const { runJobMaintenance } = functionsRequire('./lib/jobMaintenance.js')
+const { consumeBurst } = functionsRequire('./lib/requestBudget.js')
+
+test('Two-per-24h quota is atomic and replay does not consume it again', async () => {
+  const uid = 'cost-quota-race', now = Date.now()
+  await seedDb.doc('clients/' + uid).set({ uid, lastJobCreatedAt: new Date(now - 120000), recentJobCreations: [new Date(now - 120000)] })
+  const results = await Promise.all(['cost-quota-job-a1', 'cost-quota-job-b1'].map(id => invoke('createJob', uid, request(id))))
+  assert.deepEqual(results.map(r => r.status).sort(), [200, 429])
+  const winner = results.find(r => r.status === 200).body.jobId
+  assert.equal((await invoke('createJob', uid, request(winner))).body.replayed, true)
+  assert.equal((await dataOf('clients/' + uid)).recentJobCreations.length, 2)
+  assert.equal((await invoke('cancelJob', uid, { jobId: winner })).status, 200)
+  assert.equal((await invoke('createJob', uid, request('cost-quota-job-c1'))).status, 429, 'Cancel does not refund the daily quota')
+})
+
+test('Quota rolls over after 24 hours and validation never consumes a slot', async () => {
+  const uid = 'cost-rollover', now = Date.now()
+  await seedDb.doc('clients/' + uid).set({ uid, recentJobCreations: [new Date(now - DAY - 1), new Date(now - DAY - 2)] })
+  assert.equal((await invoke('createJob', uid, { ...request('cost-rollover-job1'), photoCount: 4 })).status, 400)
+  assert.equal((await invoke('createJob', uid, request('cost-rollover-job1'))).status, 200)
+  assert.equal((await dataOf('clients/' + uid)).recentJobCreations.length, 1)
+  assert.equal((await invoke('createJob', uid, request('cost-rollover-job2'))).status, 429, '60-second cooldown applies')
+})
+
+test('Two waiting jobs include uploads; accepted and expired jobs do not occupy slots', async () => {
+  const uid = 'cost-pending-limit'
+  await seedDb.doc('clients/' + uid).set({ uid })
+  await seedJob('cost-pending-one1', uid, { imagesReady: false })
+  await seedJob('cost-pending-two2', uid)
+  assert.equal((await invoke('createJob', uid, request('cost-pending-new1'))).status, 429)
+  await seedDb.doc('jobs/cost-pending-two2').update({ status: 'accepted' })
+  assert.equal((await invoke('createJob', uid, request('cost-pending-new1'))).status, 200)
+})
+
+test('Expired acceptance never spends a token; accepted replay survives old deadline', async () => {
+  const uid = 'cost-expired-tp', id = 'cost-expired-job1'
+  await seedDb.doc('tradespeople/' + uid).set(profile(uid, { balanceTokens: 2 }))
+  await seedJob(id, 'cost-expired-client', { expiresAt: new Date(Date.now() - 1) })
+  assert.equal((await invoke('acceptJob', uid, { jobId: id })).status, 412)
+  assert.equal((await dataOf('tradespeople/' + uid)).balanceTokens, 2)
+  await seedDb.doc('jobs/' + id).update({ status: 'accepted', acceptedByTradespersonId: uid })
+  assert.equal((await invoke('acceptJob', uid, { jobId: id })).body.replayed, true)
+  assert.equal((await dataOf('tradespeople/' + uid)).balanceTokens, 2)
+})
+
+test('Cancellation is owner-only, idempotent and sets seven-day retention', async () => {
+  const uid = 'cost-cancel-owner', id = 'cost-cancel-job01'
+  await seedDb.doc('clients/' + uid).set({ uid }); await seedJob(id, uid)
+  assert.equal((await invoke('cancelJob', 'someone-else', { jobId: id })).status, 403)
+  assert.equal((await invoke('cancelJob', uid, { jobId: id })).status, 200)
+  const deletion = (await dataOf('jobs/' + id)).photosDeleteAt.toMillis()
+  assert.ok(Math.abs(deletion - Date.now() - 7 * DAY) < 5000)
+  assert.equal((await invoke('cancelJob', uid, { jobId: id })).status, 200)
+  assert.equal((await dataOf('jobs/' + id)).photosDeleteAt.toMillis(), deletion)
+})
+
+test('Maintenance dry run changes nothing and overlapping runs preserve accepted jobs', async () => {
+  const now = Date.now(), expired = 'cost-maint-expired', active = 'cost-maint-active'
+  await seedJob(expired, 'cost-maint-owner', { expiresAt: new Date(now - 1000), imagesReady: false })
+  await seedJob(active, 'cost-maint-owner', { expiresAt: new Date(now - 1000), status: 'accepted', photosDeleteAt: new Date(now - 1000) })
+  const before = await dataOf('jobs/' + expired)
+  assert.ok((await runJobMaintenance(true, now)).expired.includes(expired))
+  assert.deepEqual(await dataOf('jobs/' + expired), before)
+  await Promise.all([runJobMaintenance(false, now), runJobMaintenance(false, now)])
+  assert.equal((await dataOf('jobs/' + expired)).status, 'expired')
+  assert.equal((await dataOf('jobs/' + active)).status, 'accepted')
+  assert.equal((await dataOf('jobs/' + active)).photoCleanupState, undefined)
+  assert.ok(await dataOf('jobs/' + expired + '/private/contact'))
+})
+
+test('Dismissal no longer grows the bounded profile array and cannot target other trades', async () => {
+  const uid = 'cost-dismiss-user', id = 'cost-dismiss-job1'
+  await seedDb.doc('tradespeople/' + uid).set(profile(uid, { dismissedJobs: Array.from({ length: 200 }, (_, i) => 'old-' + i) }))
+  await seedJob(id, 'cost-dismiss-client')
+  assert.equal((await invoke('dismissJob', uid, { jobId: id })).status, 200)
+  assert.ok(await dataOf(`tradespeople/${uid}/dismissedJobs/${id}`))
+  assert.equal((await dataOf('tradespeople/' + uid)).dismissedJobs.length, 200)
+  await seedDb.doc('jobs/' + id).update({ specializationRequired: 'bravar' })
+  assert.equal((await invoke('dismissJob', uid, { jobId: id })).status, 403)
+})
+
+test('Burst brake is bounded by action and resets without database writes', () => {
+  consumeBurst('unit-image', 2, 1000); consumeBurst('unit-image', 2, 1000)
+  assert.throws(() => consumeBurst('unit-image', 2, 1000), error => error.code === 'resource-exhausted')
+  consumeBurst('unit-other', 2, 1000); consumeBurst('unit-image', 2, 61000)
+})
+
+
+test('Stale token cleanup retains fresh and concurrently refreshed registrations', async t => {
+  const now = Date.now(), prefix = 'tradespeople/cost-token-owner/fcmTokens/'
+  const old = seedDb.doc(prefix + 'old'), fresh = seedDb.doc(prefix + 'fresh'), raced = seedDb.doc(prefix + 'raced')
+  await old.set({ lastSeenAt: new Date(now - 91 * DAY) })
+  await raced.set({ lastSeenAt: new Date(now - 91 * DAY) })
+  await fresh.set({ lastSeenAt: new Date(now) })
+  const proto = Object.getPrototypeOf(raced), original = proto.delete
+  proto.delete = async function (precondition) {
+    if (this.path === raced.path) await raced.update({ lastSeenAt: new Date(now) })
+    return original.call(this, precondition)
+  }
+  t.after(() => { proto.delete = original })
+  await runJobMaintenance(true, now)
+  assert.equal((await old.get()).exists, true)
+  await runJobMaintenance(false, now)
+  assert.equal((await old.get()).exists, false)
+  assert.equal((await fresh.get()).exists, true)
+  assert.equal((await raced.get()).exists, true)
+})
+
+
+test('Burst brake also protects rating, completion and administrative token writes before database access', async () => {
+  for (const [action, uid, data] of [
+    ['submitJobRating', 'burst-rating-user', { jobId: 'burst-rating-job1', stars: 5 }],
+    ['markJobAsComplete', 'burst-complete-user', { jobId: 'burst-complete-job1' }],
+    ['updateTokensByAdmin', 'burst-admin-user', { uid: 'burst-target-user', delta: 1 }],
+  ]) {
+    for (let i = 0; i < 30; i++) consumeBurst(uid + ':' + action, 30)
+    assert.equal((await invoke(action, uid, data)).status, 429, action)
+  }
+})

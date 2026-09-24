@@ -9,7 +9,7 @@ service firebase.storage {
     function canStage(uid, jobId, file) {
       let j = job(jobId);
       return signedIn() && request.auth.uid == uid && j.clientId == uid && j.schemaVersion == 2
-        && j.status == 'pending' && j.imagesReady == false && !('imageFinalizationSlots' in j)
+        && j.status == 'pending' && (!('expiresAt' in j) || request.time < j.expiresAt) && j.imagesReady == false && !('imageFinalizationSlots' in j)
         && ((file == '0.jpg' && j.photoCount >= 1) || (file == '1.jpg' && j.photoCount >= 2) || (file == '2.jpg' && j.photoCount >= 3));
     }
     match /job-uploads/{uid}/{jobId}/{file} {

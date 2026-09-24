@@ -120,3 +120,58 @@ test('Image proxy respects admin and other-city boundaries without issuing token
   const [stored] = await adminBucket.file('jobs/' + id + '/0.jpg').getMetadata()
   assert.ok(!stored.metadata?.firebaseStorageDownloadTokens)
 })
+
+const { runJobMaintenance } = functionsRequire('./lib/jobMaintenance.js')
+test('Expired upload cannot finalize or upload more; cleanup removes only closed job photos', async () => {
+  const uid = 'cost-photo-owner', id = 'cost-photo-closed1', active = 'cost-photo-active1'
+  const target = await setup(id, uid)
+  await uploadBytes(target, bytes, metadata)
+  await seedDb.doc('jobs/' + id).update({ expiresAt: new Date(Date.now() - 1) })
+  await assert.rejects(finalizeJobImages({ uid }, { jobId: id, slots: [0] }), error => error.code === 'failed-precondition')
+  await rejected(uploadBytes(ref(client(uid).storage, target.fullPath.replace('0.jpg', '1.jpg')), bytes, metadata))
+  await seedDb.doc('jobs/' + id).update({ status: 'expired', photosDeleteAt: new Date(Date.now() - 1), rating: 5 })
+  await seedDb.doc('jobs/' + active).set(job(uid, { status: 'accepted', photosDeleteAt: new Date(Date.now() - 1) }))
+  for (const name of [`jobs/${id}/0.jpg`, `jobs/${active}/0.jpg`]) await adminBucket.file(name).save(Buffer.from(bytes), { contentType: 'image/jpeg' })
+  await runJobMaintenance(true)
+  assert.equal((await adminBucket.file(`jobs/${id}/0.jpg`).exists())[0], true)
+  await runJobMaintenance(false)
+  assert.equal((await adminBucket.file(`jobs/${id}/0.jpg`).exists())[0], false)
+  assert.equal((await adminBucket.file(target.fullPath).exists())[0], false)
+  assert.equal((await adminBucket.file(`jobs/${active}/0.jpg`).exists())[0], true)
+  const retained = (await seedDb.doc('jobs/' + id).get()).data()
+  assert.equal(retained.rating, 5); assert.deepEqual(retained.imagePaths, []); assert.equal(retained.photoCleanupState, 'done')
+  await runJobMaintenance(false)
+  assert.equal((await adminBucket.file(`jobs/${active}/0.jpg`).exists())[0], true)
+})
+
+
+test('Cleanup interruption denies photos and retries without deleting contact or accepted images', async t => {
+  const lifecycle = functionsRequire('./lib/jobLifecycle.js'), original = lifecycle.jobImagesBucket
+  const id = 'cost-cleanup-retry', uid = 'cost-retry-owner', path = `jobs/${id}/0.jpg`
+  await seedDb.doc('jobs/' + id).set(job(uid, { status: 'completed', imagesReady: true, imagePaths: [path], photosDeleteAt: new Date(1) }))
+  await seedDb.doc(`jobs/${id}/private/contact`).set({ contactPhone: '+381641234567' })
+  await adminBucket.file(path).save(Buffer.from(bytes), { contentType: 'image/jpeg' })
+  lifecycle.jobImagesBucket = () => ({ file: name => name === path ? { delete: async () => { throw new Error('Simulated Storage outage') } } : adminBucket.file(name) })
+  t.after(() => { lifecycle.jobImagesBucket = original })
+  assert.ok((await runJobMaintenance(false)).failures.includes(id))
+  assert.equal((await seedDb.doc('jobs/' + id).get()).data().photoCleanupState, 'deleting')
+  await assert.rejects(readJobImage({ uid }, { jobId: id, slot: 0 }), error => error.code === 'not-found')
+  lifecycle.jobImagesBucket = original
+  await runJobMaintenance(false)
+  assert.equal((await adminBucket.file(path).exists())[0], false)
+  assert.equal((await seedDb.doc('jobs/' + id).get()).data().photoCleanupState, 'done')
+  assert.equal((await seedDb.doc(`jobs/${id}/private/contact`).get()).exists, true)
+})
+
+test('Staging sweep removes leftover uploads after publication while preserving accepted photos', async () => {
+  const id = 'cost-staging-sweep', uid = 'cost-staging-owner', now = Date.now()
+  const published = `jobs/${id}/0.jpg`, staged = `job-uploads/${uid}/${id}/0.jpg`
+  await seedDb.doc('jobs/' + id).set(job(uid, { status: 'accepted', imagePaths: [published], stagingCleanupAt: new Date(now - 1) }))
+  for (const name of [published, staged]) await adminBucket.file(name).save(Buffer.from(bytes), { contentType: 'image/jpeg' })
+  assert.ok((await runJobMaintenance(true, now)).staging.includes(id))
+  assert.equal((await adminBucket.file(staged).exists())[0], true)
+  await runJobMaintenance(false, now)
+  assert.equal((await adminBucket.file(staged).exists())[0], false)
+  assert.equal((await adminBucket.file(published).exists())[0], true)
+  assert.equal((await seedDb.doc('jobs/' + id).get()).data().stagingCleanupAt, undefined)
+})

@@ -1,9 +1,10 @@
-import { getFirestore, FieldValue, GeoPoint, Transaction } from 'firebase-admin/firestore'
+import { getFirestore, FieldValue, GeoPoint, Transaction, Timestamp } from 'firebase-admin/firestore'
 import { getStorage } from 'firebase-admin/storage'
 import { HttpsError } from 'firebase-functions/v2/https'
 import { defineBoolean, defineString } from 'firebase-functions/params'
 import { parsePhoneNumberFromString } from 'libphonenumber-js'
 import { geohashForLocation } from 'geofire-common'
+import { JOB_POLICY, millis, isExpired, photoDeletionAt } from './jobPolicy'
 
 export interface Actor { uid: string; email?: string; email_verified?: boolean; accountRole?: string }
 export type Role = 'admin' | 'tradesperson' | 'client' | 'unregistered'
@@ -103,11 +104,16 @@ export async function createJob(actor: Actor, data: any) {
       if (!same) throw new HttpsError('already-exists', 'Ovaj zahtev je već sačuvan sa drugim podacima. Otvorite ga na kontrolnoj tabli.')
       return { jobId: id, imagesReady: old.imagesReady === true, replayed: true }
     }
-    const last = account.snapshots[2].data()?.lastJobCreatedAt?.toMillis?.() || 0
-    if (Date.now() - last < 10000) throw new HttpsError('resource-exhausted', 'Sačekajte nekoliko sekundi pre slanja novog zahteva.')
-    tx.create(ref, { ...payload, clientId: actor.uid, status: 'pending', schemaVersion: 2, imagePaths: [], imagesReady: data.photoCount === 0, createdAt: FieldValue.serverTimestamp() })
+    const now = Date.now(), profile = account.snapshots[2].data()!
+    const recent = (profile.recentJobCreations || [profile.lastJobCreatedAt]).filter((t: any) => millis(t) > now - JOB_POLICY.lifetimeMs)
+    if (recent.length >= JOB_POLICY.dailyLimit) throw new HttpsError('resource-exhausted', 'Možete poslati najviše dva nova zahteva u poslednja 24 sata. Nastavak istog zahteva se ne računa ponovo.')
+    if (now - millis(profile.lastJobCreatedAt) < JOB_POLICY.cooldownMs) throw new HttpsError('resource-exhausted', 'Sačekajte minut između dva nova zahteva.')
+    // The client document serializes concurrent creates; this query includes uploads.
+    const pending = await tx.get(db.collection('jobs').where('clientId', '==', actor.uid).where('status', '==', 'pending').where('expiresAt', '>', Timestamp.fromMillis(now)).limit(JOB_POLICY.pendingLimit))
+    if (pending.size >= JOB_POLICY.pendingLimit) throw new HttpsError('resource-exhausted', 'Već imate dva zahteva na čekanju. Dovršite ili otkažite postojeći zahtev.')
+    tx.create(ref, { ...payload, clientId: actor.uid, status: 'pending', schemaVersion: 2, imagePaths: [], imagesReady: data.photoCount === 0, createdAt: FieldValue.serverTimestamp(), expiresAt: Timestamp.fromMillis(now + JOB_POLICY.lifetimeMs), policyVersion: 1 })
     tx.create(contact, { contactPhone })
-    tx.update(account.snapshots[2].ref, { lastJobCreatedAt: FieldValue.serverTimestamp() })
+    tx.update(account.snapshots[2].ref, { lastJobCreatedAt: Timestamp.fromMillis(now), recentJobCreations: [...recent, Timestamp.fromMillis(now)] })
     return { jobId: id, imagesReady: data.photoCount === 0, replayed: false }
   })
   return result
@@ -125,6 +131,7 @@ export async function acceptJob(actor: Actor, data: any) {
     if (job.clientId === actor.uid) throw new HttpsError('permission-denied', 'Ne možete prihvatiti sopstveni posao.')
     if (!contact.exists || typeof contact.data()?.contactPhone !== 'string' || !/^\+[0-9]{8,15}$/.test(contact.data()!.contactPhone)) throw new HttpsError('failed-precondition', 'Posao nema ispravan kontakt. Žeton nije potrošen.')
     if (job.acceptedByTradespersonId === actor.uid && ['accepted', 'completed'].includes(job.status)) return { jobId: id, acceptedBy: actor.uid, replayed: true }
+    if (isExpired(job)) throw new HttpsError('failed-precondition', 'Zahtev je istekao. Žeton nije potrošen.')
     if (job.status !== 'pending' || job.acceptedByTradespersonId) throw new HttpsError('failed-precondition', 'Posao više nije dostupan.')
     if (job.imagesReady !== true || job.schemaVersion !== 2) throw new HttpsError('failed-precondition', 'Zahtev još nije spreman za prihvatanje.')
     if (job.city !== 'Beograd' || (tp.city || 'Beograd') !== job.city || specialization(tp.specialization) !== job.specializationRequired) throw new HttpsError('permission-denied', 'Posao ne odgovara vašoj struci ili gradu.')
@@ -155,6 +162,7 @@ export async function finalizeJobImages(actor: Actor, data: any) {
     await cleanup()
     return { jobId: id, imagesReady: true, imagePaths: job.imagePaths || [] }
   }
+  if (isExpired(job)) throw new HttpsError('failed-precondition', 'Rok za slanje je istekao. Pošaljite novi zahtev.')
   if (job.status !== 'pending' || job.schemaVersion !== 2 || data.slots.some((s: number) => s >= job.photoCount)) throw new HttpsError('failed-precondition', 'Zahtev nije dostupan za fotografije.')
   // Validate before fixing the selection. A missing upload must still allow
   // the owner to retry with fewer photos or explicitly publish without photos.
@@ -168,7 +176,7 @@ export async function finalizeJobImages(actor: Actor, data: any) {
   // retries can only finish that selection; they cannot publish orphan variants.
   const selected: number[] = await db.runTransaction(async tx => {
     const fresh = (await tx.get(ref)).data()
-    if (!fresh || fresh.clientId !== actor.uid || fresh.status !== 'pending') throw new HttpsError('failed-precondition', 'Zahtev više nije na čekanju.')
+    if (!fresh || fresh.clientId !== actor.uid || fresh.status !== 'pending' || isExpired(fresh)) throw new HttpsError('failed-precondition', 'Zahtev više nije na čekanju.')
     if (Array.isArray(fresh.imageFinalizationSlots)) return fresh.imageFinalizationSlots
     const slots = [...data.slots].sort()
     tx.update(ref, { imageFinalizationSlots: slots })
@@ -205,8 +213,8 @@ export async function finalizeJobImages(actor: Actor, data: any) {
     const fresh = (await tx.get(ref)).data()
     if (!fresh || fresh.clientId !== actor.uid) throw new HttpsError('permission-denied', 'Zahtev nije vaš.')
     if (fresh.imagesReady === true) return { jobId: id, imagesReady: true, imagePaths: fresh.imagePaths || [] }
-    if (fresh.status !== 'pending') throw new HttpsError('failed-precondition', 'Zahtev više nije na čekanju.')
-    tx.update(ref, { imagePaths: paths, imagesReady: true, imagesUpdatedAt: FieldValue.serverTimestamp() })
+    if (fresh.status !== 'pending' || isExpired(fresh)) throw new HttpsError('failed-precondition', 'Zahtev više nije na čekanju.')
+    tx.update(ref, { imagePaths: paths, imagesReady: true, imagesUpdatedAt: FieldValue.serverTimestamp(), stagingCleanupAt: Timestamp.fromMillis(Date.now() + 10 * 60_000), expiresAt: Timestamp.fromMillis(Date.now() + JOB_POLICY.lifetimeMs) })
     return { jobId: id, imagesReady: true, imagePaths: paths }
   })
   // Bounded cleanup; a failed delete cannot undo a successfully published job.
@@ -222,12 +230,12 @@ export async function readJobImage(actor: Actor, data: any): Promise<Buffer> {
   if (!Number.isInteger(data.slot) || data.slot < 0 || data.slot > 2) throw new HttpsError('invalid-argument', 'Neispravna fotografija.')
   const job = (await getFirestore().doc('jobs/' + id).get()).data()
   const path = 'jobs/' + id + '/' + data.slot + '.jpg'
-  if (!job || job.imagesReady !== true || !job.imagePaths?.includes(path)) throw new HttpsError('not-found', 'Fotografija nije dostupna.')
+  if (!job || job.photoCleanupState === 'deleting' || job.imagesReady !== true || !job.imagePaths?.includes(path)) throw new HttpsError('not-found', 'Fotografija nije dostupna.')
   let allowed = job.clientId === actor.uid || (job.acceptedByTradespersonId === actor.uid && ['accepted', 'completed'].includes(job.status))
   if (!allowed) {
     const account = await getFirestore().runTransaction(tx => roles(tx, actor.uid))
     const tp = account.snapshots[1].data()
-    allowed = account.role === 'admin' || (account.role === 'tradesperson' && job.status === 'pending' && job.city === 'Beograd' && (tp?.city || 'Beograd') === job.city && specialization(tp?.specialization) === job.specializationRequired)
+    allowed = account.role === 'admin' || (account.role === 'tradesperson' && job.status === 'pending' && !isExpired(job) && job.city === 'Beograd' && (tp?.city || 'Beograd') === job.city && specialization(tp?.specialization) === job.specializationRequired)
   }
   if (!allowed) throw new HttpsError('permission-denied', 'Nemate pristup fotografiji.')
   const chunks: Buffer[] = []
@@ -238,6 +246,30 @@ export async function readJobImage(actor: Actor, data: any): Promise<Buffer> {
   if (!image.length || image.length >= 3 * 1024 * 1024) throw new HttpsError('failed-precondition', 'Fotografija nije ispravna.')
   return image
 }
-function jobImagesBucket() {
+export function jobImagesBucket() {
   return getStorage().bucket(demo() ? process.env.GCLOUD_PROJECT + '.appspot.com' : imageBucket.value())
+}
+
+export async function cancelJob(actor: Actor, data: any) {
+  requireWritesEnabled(); object(data, ['jobId'])
+  const ref = getFirestore().doc('jobs/' + jobId(data.jobId))
+  await requireRole(actor.uid, 'client')
+  await getFirestore().runTransaction(async tx => {
+    const job = (await tx.get(ref)).data()
+    if (!job || job.clientId !== actor.uid) throw new HttpsError('permission-denied', 'Zahtev nije vaš.')
+    if (job.status === 'canceled' || job.status === 'expired') return
+    if (job.status !== 'pending' || job.acceptedByTradespersonId || (job.imagesReady === false && job.imageFinalizationSlots && !isExpired(job))) throw new HttpsError('failed-precondition', 'Zahtev trenutno nije moguće otkazati.')
+    tx.update(ref, { status: 'canceled', canceledAt: FieldValue.serverTimestamp(), photosDeleteAt: photoDeletionAt() })
+  })
+  return { jobId: ref.id }
+}
+export async function dismissJob(actor: Actor, data: any) {
+  requireWritesEnabled(); object(data, ['jobId'])
+  const db = getFirestore(), id = jobId(data.jobId)
+  await db.runTransaction(async tx => {
+    const account = await roles(tx, actor.uid), job = (await tx.get(db.doc('jobs/' + id))).data()
+    if (account.role !== 'tradesperson' || !job || job.status !== 'pending' || isExpired(job) || job.specializationRequired !== account.snapshots[1].data()?.specialization || job.city !== 'Beograd' || (account.snapshots[1].data()?.city || 'Beograd') !== job.city) throw new HttpsError('permission-denied', 'Zahtev nije dostupan.')
+    tx.set(db.doc(`tradespeople/${actor.uid}/dismissedJobs/${id}`), { expiresAt: job.expiresAt || photoDeletionAt(), createdAt: FieldValue.serverTimestamp() })
+  })
+  return { jobId: id }
 }

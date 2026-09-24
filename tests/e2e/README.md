@@ -14,3 +14,7 @@ Ports 3333, 8180, 9399, 9199, 5501, 4442, 4542 and 9150 must be free. Do not run
 The generic webapp-testing server helper was tried but left a child Nuxt process on Windows. This runner owns and terminates its server tree and refuses to reuse unrelated servers. Never terminate a process only because it uses the same port; verify ownership.
 
 Coverage: registration interrupted after Auth creation, reload recovery, real local email-link login, lost create response, draft/photo recovery, zero-token viewing and acceptance rejection, authorized photo delivery, post-accept contact, admin token allocation, completion/rating, cross-role redirects, role lookup failure/recovery and cross-tab logout clearing both contact and request forms. API concurrency and rule attacks are separate in npm run test:security. Production IAM, index readiness, delivery and costs require release smoke checks.
+
+Cost-control coverage also checks equal-timestamp history pages (3/6/7), tradesperson history and filtered reviews, expired-job prefilling and the daily-limit message. A feed with its first twenty jobs dismissed must still expose the next window; a near-term deadline removes that job without reloading the page. Wait for the actual availability switch after navigation, then assert aria-checked, before expecting incoming jobs.
+
+Do not run Nuxt build concurrently with the browser dev server: they share generated Nuxt artifacts. Compiled SSR checks require the same E2E_PYTHON and E2E_BROWSER_CHANNEL environment settings as this suite.

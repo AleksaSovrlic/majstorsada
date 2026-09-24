@@ -110,11 +110,12 @@
                 <path fill="currentColor" d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2m1 15h-2v-2h2zm0-4h-2V7h2z" />
               </svg>
             </div>
-            <h3 class="text-xl font-bold text-brand-navy">Nema novih poslova</h3>
+<h3 class="text-xl font-bold text-brand-navy">{{ newHasMore ? 'Pregledajte još poslova' : 'Nema novih poslova' }}</h3>
             <p class="mt-2 text-slate-600">
               Ostanite <span class="font-semibold">dostupni</span> — čim stigne novi posao, pojaviće se ovde.
             </p>
           </div>
+          <PageControls :loading="feedLoading" :more="newHasMore" :error="feedError" @more="loadMoreNew" @refresh="refreshNew" />
         </div>
 
         <!-- TAB: ACTIVE -->
@@ -188,6 +189,7 @@
 
         <!-- TAB: HISTORY -->
         <div v-else role="tabpanel" class="space-y-3">
+          <PageControls :loading="history.loading.value" :more="history.hasMore.value" :error="history.error.value" @more="history.more" @refresh="history.refresh" />
           <template v-if="completedJobs.length > 0">
             <div
               v-for="j in completedJobs"
@@ -236,7 +238,7 @@ import TokenBalance from '@/components/majstor/TokenBalance.vue'
 import NewJobCard from '@/components/majstor/NewJobCard.vue'
 import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import NotificationsBanner from '@/components/majstor/NotificationsBanner.vue'
-import { collection, onSnapshot, query, where } from 'firebase/firestore'
+import { collection, onSnapshot, query, where, orderBy, limit, getDocs, documentId, Timestamp } from 'firebase/firestore'
 import { useAuthStore } from '@/stores/auth'
 import { useTradespersonStore } from '@/stores/tradesperson'
 import { DEFAULT_CITY } from '@/utils/cities'
@@ -254,10 +256,10 @@ const nuxt = useNuxtApp()
 const tpStore = useTradespersonStore()
 const newJobs = ref<Array<any>>([])
 const activeJobs = ref<Array<any>>([])
-const completedJobs = ref<Array<any>>([])
+const history = usePagedQuery(3)
+const completedJobs = history.rows
 let unsub: (() => void) | null = null
 let unsubActive: (() => void) | null = null
-let unsubCompleted: (() => void) | null = null
 const finishingJobIds = new Set<string>()
 const errorMsg = ref('')
 const successMsg = ref('')
@@ -267,15 +269,23 @@ const dismissErrorMsg = ref('')
 type DashboardTab = 'new' | 'active' | 'history'
 const activeTab = ref<DashboardTab>('new')
 
+const newFeedSize = ref(20), newHasMore = ref(false), feedLoading = ref(false), feedError = ref('')
+const dismissalCache = new Map<string, boolean>()
+let dismissalOwner = ''
+function refreshNew() { dismissalCache.clear(); startJobsFeed() }
+let feedGeneration = 0, feedSequence = 0, expiryTimer: ReturnType<typeof setTimeout> | null = null
+function loadMoreNew() { if (!feedError.value) newFeedSize.value += 20; startJobsFeed() }
 function startJobsFeed() {
   stopPendingFeed()
-  const { $firestore } = useNuxtApp()
+  const generation = feedGeneration
+  const { $firestore } = nuxt
   const col = collection($firestore, 'jobs')
   // Guard: only subscribe when available and specialization is set
   const isAvailable = tpStore.profile?.status === 'available'
   const spec = tpStore.profile?.specialization
   if (!isAvailable || !spec) {
     newJobs.value = []
+    newHasMore.value = false; feedLoading.value = false; feedError.value = ''
     return
   }
   // Silent fallback: if tradesperson has no city yet, treat them as "Beograd".
@@ -285,46 +295,73 @@ function startJobsFeed() {
     where('status', '==', 'pending'),
     where('specializationRequired', '==', spec),
     where('city', '==', city),
-    where('imagesReady', '==', true)
+    where('imagesReady', '==', true),
+    where('expiresAt', '>', Timestamp.now()), orderBy('expiresAt', 'desc'), limit(newFeedSize.value)
   ]
   const q = query(col, ...constraints)
-  unsub = onSnapshot(q, (snap) => {
-    const raw = snap.docs.map((d) => ({ jobId: d.id, ...(d.data() as any) }))
-    const dismissed = new Set(tpStore.profile?.dismissedJobs || [])
-    // Hide jobs that are still uploading images (Option B): they become visible once `imagesReady` flips to true.
-    newJobs.value = raw.filter((j) => !dismissed.has(j.jobId) && j.imagesReady !== false)
-  })
+  feedLoading.value = true; feedError.value = ''
+  unsub = onSnapshot(q, async (snap) => {
+    const sequence = ++feedSequence
+    const uid = auth.currentUser?.uid
+    if (!uid) return
+    if (dismissalOwner !== uid) { dismissalCache.clear(); dismissalOwner = uid }
+    const raw = snap.docs.map(d => ({ jobId: d.id, ...(d.data() as any) }))
+    try {
+      const dismissed = new Set(tpStore.profile?.dismissedJobs || [])
+      const unknown = raw.filter(j => !dismissalCache.has(j.jobId))
+      for (let i = 0; i < unknown.length; i += 30) {
+        const ids = unknown.slice(i, i + 30).map(j => j.jobId)
+        const hidden = await getDocs(query(collection($firestore, 'tradespeople', uid, 'dismissedJobs'), where(documentId(), 'in', ids)))
+        if (generation !== feedGeneration || sequence !== feedSequence || auth.currentUser?.uid !== uid) return
+        const hiddenIds = new Set(hidden.docs.map(doc => doc.id))
+        ids.forEach(id => { if (!dismissalCache.has(id)) dismissalCache.set(id, hiddenIds.has(id)) })
+      }
+      const visibleIds = new Set(raw.map(j => j.jobId))
+      for (const [id, hidden] of dismissalCache) {
+        if (!visibleIds.has(id)) dismissalCache.delete(id)
+        else if (hidden) dismissed.add(id)
+      }
+      if (generation !== feedGeneration || sequence !== feedSequence || auth.currentUser?.uid !== uid) return
+      newHasMore.value = snap.size === newFeedSize.value
+      newJobs.value = raw.filter(j => !dismissed.has(j.jobId) && j.expiresAt.toMillis() > Date.now())
+      if (expiryTimer) clearTimeout(expiryTimer)
+      const next = Math.min(...raw.map(j => j.expiresAt.toMillis()))
+      if (Number.isFinite(next)) expiryTimer = setTimeout(startJobsFeed, Math.max(1, next - Date.now() + 50))
+    } catch { if (generation === feedGeneration && sequence === feedSequence) feedError.value = 'Ne mogu da učitam poslove. Pokušajte ponovo.' }
+    finally { if (generation === feedGeneration && sequence === feedSequence) feedLoading.value = false }
+  }, () => { if (generation === feedGeneration) { feedLoading.value = false; feedError.value = 'Ne mogu da učitam poslove. Pokušajte ponovo.' } })
+
 }
 function startOwnedFeeds() {
   const uid = auth.currentUser?.uid || ''
-  const { $firestore } = useNuxtApp()
+  const { $firestore } = nuxt
   if (!uid) {
     if (unsubActive) { unsubActive(); unsubActive = null }
-    if (unsubCompleted) { unsubCompleted(); unsubCompleted = null }
     activeJobs.value = []
     completedJobs.value = []
     return
   }
   if (unsubActive) { unsubActive(); unsubActive = null }
-  if (unsubCompleted) { unsubCompleted(); unsubCompleted = null }
-  // Single owned feed: subscribe by owner, split by status client-side
+  history.reset(query(collection($firestore, 'jobs'), where('acceptedByTradespersonId', '==', uid), where('status', '==', 'completed'), orderBy('createdAt', 'desc')))
+  if (activeTab.value === 'history') void history.more()
+  // Only active work stays live; history is loaded on demand.
   unsubActive = onSnapshot(
-    query(collection($firestore, 'jobs'), where('acceptedByTradespersonId', '==', uid), where('status', 'in', ['accepted', 'completed'])),
+    query(collection($firestore, 'jobs'), where('acceptedByTradespersonId', '==', uid), where('status', '==', 'accepted')),
     (snap) => {
       const all = snap.docs.map((d) => ({ jobId: d.id, ...(d.data() as any) }))
       activeJobs.value = all.filter((j) => j.status === 'accepted')
-      completedJobs.value = all.filter((j) => j.status === 'completed')
+
     }
   )
 }
 
 function stopPendingFeed() {
+  feedGeneration++; if (expiryTimer) clearTimeout(expiryTimer); expiryTimer = null
   if (unsub) { unsub(); unsub = null }
 }
 
 function stopOwnedFeeds() {
   if (unsubActive) { unsubActive(); unsubActive = null }
-  if (unsubCompleted) { unsubCompleted(); unsubCompleted = null }
 }
 
 async function onDismiss(jobId: string) {
@@ -335,13 +372,14 @@ async function onDismiss(jobId: string) {
   dismissingJobIds.value = new Set(dismissingJobIds.value).add(jobId)
 
   // Optimistic: remove immediately to avoid "blink + return" UX
-  const prev = newJobs.value
   newJobs.value = newJobs.value.filter((j) => j.jobId !== jobId)
   try {
     await tpStore.dismissJob(jobId)
+    dismissalCache.set(jobId, true)
+    newJobs.value = newJobs.value.filter(j => j.jobId !== jobId)
   } catch (e: any) {
-    // Revert on failure
-    newJobs.value = prev
+    // Re-read current state; a saved snapshot may already contain accepted/expired work.
+    startJobsFeed()
     dismissErrorMsg.value = e?.message || 'Ne mogu da odbijem posao. Pokušajte ponovo.'
   } finally {
     const next = new Set(dismissingJobIds.value)
@@ -357,8 +395,7 @@ function onAccepted(job: any) {
   if (!activeJobs.value.some((j) => j.jobId === job.jobId)) {
     activeJobs.value = [{ ...job, status: 'accepted' }, ...activeJobs.value]
   }
-  // Konsoliduj sa Firestore feedom
-  startOwnedFeeds()
+  // The existing live listener delivers the accepted job without a full re-subscription.
 }
 
 onMounted(async () => {
@@ -375,17 +412,20 @@ onMounted(async () => {
 })
 
 watch(
-  () => ({ status: tpStore.profile?.status, spec: tpStore.profile?.specialization, city: (tpStore.profile as any)?.city }),
+  [() => tpStore.profile?.status, () => tpStore.profile?.specialization, () => (tpStore.profile as any)?.city],
   () => {
     if (tpStore.profile?.status !== 'available') {
       stopPendingFeed()
       newJobs.value = []
+      newHasMore.value = false; feedLoading.value = false; feedError.value = ''
       return
     }
     startJobsFeed()
   },
   { deep: false, immediate: true }
 )
+
+watch(activeTab, tab => { if (tab === 'history' && !history.initialized.value) void history.more() })
 
 watch(() => auth.currentUser?.uid, () => {
   // Re-subscribe owned feeds if UID becomes available or changes
@@ -455,9 +495,8 @@ async function onFinish(jobId: string) {
     // Optimistic UI: move from active to completed immediately
     const idx = activeJobs.value.findIndex((j) => j.jobId === jobId)
     if (idx !== -1) {
-      const job = activeJobs.value[idx]
       activeJobs.value.splice(idx, 1)
-      completedJobs.value = [{ ...job, status: 'completed', completedAt: new Date().toISOString() }, ...completedJobs.value]
+      if (history.initialized.value) void history.refresh()
     }
   } catch (e: any) {
     errorMsg.value = e?.message || 'Greška pri završetku posla.'
