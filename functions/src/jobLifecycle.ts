@@ -37,35 +37,33 @@ export function jobId(value: any) {
   if (typeof value !== 'string' || !/^[a-zA-Z0-9_-]{16,100}$/.test(value)) throw new HttpsError('invalid-argument', 'Neispravan identifikator zahteva.')
   return value
 }
-async function roles(tx: Transaction, uid: string) {
-  const db = getFirestore()
+export async function readAccountRoles(tx: Transaction, uid: string, db = getFirestore()) {
   const snapshots = await tx.getAll(...['admins', 'tradespeople', 'clients'].map(c => db.doc(`${c}/${uid}`)))
   const found = snapshots.map((s, i) => s.exists ? (['admin', 'tradesperson', 'client'] as const)[i] : null).filter(Boolean)
   if (found.length > 1) throw new HttpsError('failed-precondition', 'Nalog ima neusaglašene uloge. Kontaktirajte podršku.')
   return { role: (found[0] || 'unregistered') as Role, snapshots }
 }
 export async function requireRole(uid: string, role: Role) {
-  const actual = await getFirestore().runTransaction(tx => roles(tx, uid))
+  const actual = await getFirestore().runTransaction(tx => readAccountRoles(tx, uid))
   if (actual.role !== role) throw new HttpsError('permission-denied', 'Vaš nalog nema dozvolu za ovu radnju.')
 }
 export async function resolveAccount(actor: Actor, data: any) {
   object(data, [])
-  const { role } = await getFirestore().runTransaction(tx => roles(tx, actor.uid))
+  const { role } = await getFirestore().runTransaction(tx => readAccountRoles(tx, actor.uid))
   return { role }
 }
-export async function completeRegistration(actor: Actor, data: any) {
+export async function completeRegistration(actor: Actor, data: any, db = getFirestore()) {
   requireWritesEnabled()
   object(data, ['role', 'displayName', 'phoneNumber', 'specialization', 'city'])
   if (!['client', 'tradesperson'].includes(data.role)) throw new HttpsError('invalid-argument', 'Neispravna vrsta naloga.')
-  if (data.role === 'client' && !actor.email_verified) throw new HttpsError('failed-precondition', 'Prvo potvrdite email adresu linkom za prijavu.')
+  if (data.role === 'client' && !actor.email_verified) throw new HttpsError('failed-precondition', 'Prvo potvrdite email adresu pre registracije.')
   const fields = data.role === 'tradesperson' ? {
     displayName: text(data.displayName, 2, 80, 'Ime'), phoneNumber: phone(data.phoneNumber),
     specialization: specialization(data.specialization), city: 'Beograd',
   } : {}
   if (data.role === 'tradesperson' && data.city !== 'Beograd') throw new HttpsError('invalid-argument', 'Trenutno podržavamo samo Beograd.')
-  const db = getFirestore()
   await db.runTransaction(async tx => {
-    const existing = await roles(tx, actor.uid)
+    const existing = await readAccountRoles(tx, actor.uid, db)
     if (existing.role === data.role) return // Retry never resets tokens, ratings or profile edits.
     if (existing.role !== 'unregistered') throw new HttpsError('already-exists', 'Nalog je već registrovan za drugu ulogu.')
     tx.create(db.doc(`${data.role === 'client' ? 'clients' : 'tradespeople'}/${actor.uid}`), {
@@ -93,7 +91,7 @@ export async function createJob(actor: Actor, data: any) {
   const contactPhone = phone(data.contactPhone)
   const db = getFirestore(), ref = db.doc(`jobs/${id}`), contact = ref.collection('private').doc('contact')
   const result = await db.runTransaction(async tx => {
-    const account = await roles(tx, actor.uid)
+    const account = await readAccountRoles(tx, actor.uid)
     if (account.role !== 'client') throw new HttpsError('permission-denied', 'Samo klijent može da pošalje zahtev.')
     const existing = await tx.get(ref)
     if (existing.exists) {
@@ -123,7 +121,7 @@ export async function acceptJob(actor: Actor, data: any) {
   object(data, ['jobId'])
   const id = jobId(data.jobId), db = getFirestore(), ref = db.doc(`jobs/${id}`)
   return db.runTransaction(async tx => {
-    const account = await roles(tx, actor.uid)
+    const account = await readAccountRoles(tx, actor.uid)
     if (account.role !== 'tradesperson') throw new HttpsError('permission-denied', 'Potreban je nalog majstora.')
     const [snap, contact] = await tx.getAll(ref, ref.collection('private').doc('contact'))
     if (!snap.exists) throw new HttpsError('not-found', 'Posao ne postoji.')
@@ -233,7 +231,7 @@ export async function readJobImage(actor: Actor, data: any): Promise<Buffer> {
   if (!job || job.photoCleanupState === 'deleting' || job.imagesReady !== true || !job.imagePaths?.includes(path)) throw new HttpsError('not-found', 'Fotografija nije dostupna.')
   let allowed = job.clientId === actor.uid || (job.acceptedByTradespersonId === actor.uid && ['accepted', 'completed'].includes(job.status))
   if (!allowed) {
-    const account = await getFirestore().runTransaction(tx => roles(tx, actor.uid))
+    const account = await getFirestore().runTransaction(tx => readAccountRoles(tx, actor.uid))
     const tp = account.snapshots[1].data()
     allowed = account.role === 'admin' || (account.role === 'tradesperson' && job.status === 'pending' && !isExpired(job) && job.city === 'Beograd' && (tp?.city || 'Beograd') === job.city && specialization(tp?.specialization) === job.specializationRequired)
   }
@@ -267,7 +265,7 @@ export async function dismissJob(actor: Actor, data: any) {
   requireWritesEnabled(); object(data, ['jobId'])
   const db = getFirestore(), id = jobId(data.jobId)
   await db.runTransaction(async tx => {
-    const account = await roles(tx, actor.uid), job = (await tx.get(db.doc('jobs/' + id))).data()
+    const account = await readAccountRoles(tx, actor.uid), job = (await tx.get(db.doc('jobs/' + id))).data()
     if (account.role !== 'tradesperson' || !job || job.status !== 'pending' || isExpired(job) || job.specializationRequired !== account.snapshots[1].data()?.specialization || job.city !== 'Beograd' || (account.snapshots[1].data()?.city || 'Beograd') !== job.city) throw new HttpsError('permission-denied', 'Zahtev nije dostupan.')
     tx.set(db.doc(`tradespeople/${actor.uid}/dismissedJobs/${id}`), { expiresAt: job.expiresAt || photoDeletionAt(), createdAt: FieldValue.serverTimestamp() })
   })

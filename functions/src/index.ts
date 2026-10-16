@@ -14,6 +14,9 @@ import { photoDeletionAt, isExpired } from './jobPolicy'
 import { runJobMaintenance } from './jobMaintenance'
 import { onSchedule } from 'firebase-functions/v2/scheduler'
 import { defineBoolean } from 'firebase-functions/params'
+import { runOtpMaintenance } from './otpMaintenance'
+import { runScheduledMaintenance } from './maintenanceOrchestration'
+export { requestClientOtp, verifyClientOtp } from './otpRuntime'
 setGlobalOptions({ region: 'europe-west3', minInstances: 0, maxInstances: 3, memory: '256MiB', timeoutSeconds: 60, concurrency: 80 })
 
 // Emulator connections use the same Admin SDK without a service-account key.
@@ -470,7 +473,15 @@ export const notifyOnJobImagesReady = onDocumentUpdated(
 
 const maintenanceEnabled = defineBoolean('JOB_MAINTENANCE_ENABLED', { default: false })
 export const maintainJobs = onSchedule({ schedule: 'every 10 minutes', timeZone: 'UTC', maxInstances: 1, concurrency: 1, timeoutSeconds: 300 }, async () => {
-  const report = await runJobMaintenance(!maintenanceEnabled.value())
-  if (report.failures.length) logger.error('Job maintenance incomplete; retained candidates will retry', report)
-  else logger.info('Job maintenance', report)
+  await runScheduledMaintenance({
+    runJobs: () => runJobMaintenance(!maintenanceEnabled.value()),
+    logJobs: report => {
+      if (report.failures.length) logger.error('Job maintenance incomplete; retained candidates will retry', report)
+      else logger.info('Job maintenance', report)
+    },
+    // Cleanup continues with both OTP gates closed, after the business pass.
+    runOtp: deadline => runOtpMaintenance(undefined, Date.now(), false, { deadline }),
+    logOtp: report => logger.info('OTP maintenance', report),
+    logOtpFailure: () => logger.error('OTP maintenance incomplete; retained candidates will retry'),
+  })
 })

@@ -1,0 +1,13 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": { "Federated": "accounts.google.com" },
+    "Action": "sts:AssumeRoleWithWebIdentity",
+    "Condition": { "StringEquals": {
+      "accounts.google.com:aud": "REPLACE_GOOGLE_SERVICE_ACCOUNT_NUMERIC_ID",
+      "accounts.google.com:oaud": "majstorsada-otp-ses",
+      "accounts.google.com:sub": "REPLACE_GOOGLE_SERVICE_ACCOUNT_NUMERIC_ID"
+    } }
+  }]
+}

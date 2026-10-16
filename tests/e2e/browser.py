@@ -8,6 +8,7 @@ from PIL import Image
 PROJECT = 'demo-majstorsada-e2e'
 assert os.environ.get('GCLOUD_PROJECT') == PROJECT
 assert os.environ.get('FIRESTORE_EMULATOR_HOST') == '127.0.0.1:8180'
+assert os.environ.get('FIREBASE_AUTH_EMULATOR_HOST') == '127.0.0.1:9199'
 BASE = 'http://localhost:3333'
 ART = Path('.firebase/e2e'); ART.mkdir(parents=True, exist_ok=True)
 def http(url, data=None, method=None):
@@ -46,6 +47,53 @@ def traffic(route):
         route.continue_()
     else:
         route.abort()
+
+def retired_link_checks(context):
+    # A valid, unused local Firebase email link must no longer sign in or send.
+    # Fixture generation is local-only and is outside the browser request trace.
+    auth_base = 'http://127.0.0.1:9199/identitytoolkit.googleapis.com/v1/'
+    legacy_email = 'retired-link@example.test'
+    accounts = lambda: sorted(user['localId'] for user in http(auth_base + 'projects/' + PROJECT + '/accounts:batchGet?maxResults=1000').get('users', []))
+    before = {'accounts': accounts(), 'clients': sorted(doc['name'] for doc in documents('clients')), 'outbox': len(documents('_otpTestOutbox'))}
+    continuation = BASE + '/finishLogin?' + urlencode({'from':'/zahtev?tip=bravar'})
+    http(auth_base + 'accounts:sendOobCode?key=demo-key', {
+        'requestType':'EMAIL_SIGNIN', 'email':legacy_email,
+        'continueUrl':continuation, 'canHandleCodeInApp':True,
+    })
+    codes = http('http://127.0.0.1:9199/emulator/v1/projects/' + PROJECT + '/oobCodes')['oobCodes']
+    generated = urlparse(next(code for code in reversed(codes) if code['email'] == legacy_email)['oobLink'])
+    assert generated.hostname in ('localhost', '127.0.0.1'), 'Retired-link fixture must remain local'
+    query = parse_qs(generated.query)
+    assert query.get('mode') == ['signIn'] and query.get('oobCode')
+    legacy_context = context(); legacy = legacy_context.new_page()
+    legacy.add_init_script("""if (location.origin === 'http://localhost:3333') {
+      localStorage.setItem('emailForSignIn', 'retired-link@example.test');
+      sessionStorage.setItem('postAuthRedirect', '/zahtev?tip=bravar');
+    }""")
+    writes = []
+    def observe(request):
+        parsed = urlparse(request.url)
+        if re.search(r'accounts:(signInWithEmailLink|sendOobCode|signUp|update)$', parsed.path) or parsed.path.endswith(('/requestClientOtp', '/verifyClientOtp')):
+            writes.append(parsed.path)
+    legacy.on('request', observe)
+    for ingress in ['/finishLogin', '/']:
+        legacy.goto(BASE + ingress + '?' + generated.query, wait_until='domcontentloaded', timeout=180000)
+        legacy.wait_for_url('**/login?from=**', timeout=90000)
+        inspect(legacy, 'retired-link-' + ('finish' if ingress != '/' else 'root'))
+        final_query = parse_qs(urlparse(legacy.url).query)
+        assert urlparse(legacy.url).path == '/login'
+        assert final_query == {'from':['/zahtev?tip=bravar']}, 'Only a safe request target may survive retirement'
+        expect(legacy.locator('#client-otp-email')).to_be_visible()
+        expect(legacy.get_by_role('button', name='Pošalji kod za prijavu', exact=False)).to_be_visible()
+        assert legacy.evaluate("localStorage.getItem('emailForSignIn') === null && sessionStorage.getItem('postAuthRedirect') === null")
+    assert not writes, 'Retired links must not consume, create identities, or send: ' + repr(writes)
+    after = {'accounts': accounts(), 'clients': sorted(doc['name'] for doc in documents('clients')), 'outbox': len(documents('_otpTestOutbox'))}
+    assert after == before, 'Retired ingress must leave identities, client profiles and OTP outbox unchanged'
+    # The emulator still exposes the same unused code; the application never used it.
+    remaining = http('http://127.0.0.1:9199/emulator/v1/projects/' + PROJECT + '/oobCodes')['oobCodes']
+    assert any(code['email'] == legacy_email and parse_qs(urlparse(code['oobLink']).query).get('oobCode') == query['oobCode'] for code in remaining)
+    legacy_context.close()
+    print('PASS: valid retired links redirect safely from finish/root, clear legacy storage, and do not sign in, create profiles or send', flush=True)
 
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True, channel=os.environ.get('E2E_BROWSER_CHANNEL') or None)
@@ -95,15 +143,20 @@ with sync_playwright() as p:
         expect(switch).to_have_attribute('aria-checked', 'true')
         expect(tp.get_by_text('Dostupan', exact=True)).to_be_visible()
 
+        retired_link_checks(context)
         customer.goto(BASE + '/login', wait_until='domcontentloaded')
         inspect(customer, '04-client-login')
-        customer.locator('input[type=email]').fill('klijent@example.test')
-        customer.locator('button[type=submit]').click()
-        expect(customer.get_by_text('Proverite', exact=False).first).to_be_visible(timeout=30000)
-        codes = http('http://127.0.0.1:9199/emulator/v1/projects/' + PROJECT + '/oobCodes')['oobCodes']
-        code = next(c for c in reversed(codes) if c['email'] == 'klijent@example.test')
-        code_value = code.get('oobCode') or parse_qs(urlparse(code['oobLink']).query)['oobCode'][0]
-        customer.goto(BASE + '/finishLogin?' + urlencode({'mode':'signIn','oobCode':code_value,'apiKey':'demo-key','from':'/zahtev'}), wait_until='domcontentloaded')
+        expect(customer.locator('#client-otp-email')).to_be_visible()
+        expect(customer.get_by_role('button', name='Pošalji kod za prijavu', exact=False)).to_be_visible()
+        customer.locator('#client-otp-email').fill('klijent@example.test')
+        customer.get_by_role('button', name='Pošalji kod za prijavu', exact=False).click()
+        expect(customer.locator('#client-otp-code')).to_be_visible(timeout=90000)
+        outbox = [doc for doc in documents('_otpTestOutbox') if doc['fields']['email']['stringValue'] == 'klijent@example.test']
+        assert len(outbox) == 1, 'Client business fixture must send exactly one local OTP'
+        otp_code = outbox[0]['fields']['code']['stringValue']
+        assert len(otp_code) == 6 and otp_code.isdigit()
+        customer.locator('#client-otp-code').fill(otp_code)
+        customer.get_by_role('button', name='Potvrdi kod i nastavi', exact=False).click()
         customer.wait_for_url('**/zahtev', timeout=90000)
         inspect(customer, '05-request')
         customer.get_by_role('button', name='Vodoinstalater', exact=True).click()
@@ -277,7 +330,7 @@ with sync_playwright() as p:
         expect(customer.locator('input[type=tel]')).to_have_count(0)
         assert len(documents('clients')) == 1
         assert len(documents('tradespeople')) == 1
-        print('PASS: registration recovery, real magic link, lost create response, reload/photo recovery, authenticated photo, pre-accept privacy, zero-token guard, admin allocation, acceptance/contact, completion/rating, role-error recovery and logout', flush=True)
+        print('PASS: registration recovery, real OTP login, retired-link rejection, lost create response, reload/photo recovery, authenticated photo, pre-accept privacy, zero-token guard, admin allocation, acceptance/contact, completion/rating, role-error recovery and logout', flush=True)
         if errors: raise AssertionError('Browser page errors: ' + repr(errors))
     except Exception:
         for index, c in enumerate(contexts):

@@ -1,0 +1,15 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": "ses:SendEmail",
+    "Resource": "arn:aws:ses:eu-central-1:REPLACE_AWS_ACCOUNT_ID:identity/majstorsada.rs",
+    "Condition": {
+      "StringEquals": {
+        "aws:RequestedRegion": "eu-central-1",
+        "ses:FromAddress": "noreply@majstorsada.rs",
+        "ses:FeedbackAddress": "aleksa@majstorsada.rs"
+      }
+    }
+  }]
+}

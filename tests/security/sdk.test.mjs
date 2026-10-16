@@ -78,3 +78,27 @@ test('Push lease excludes concurrent workers and an expired job is not sent', as
   await api.notifyOnJobCreated.run(event)
   assert.equal((await state.get()).data().leaseId, 'another-worker')
 })
+
+test('OTP production SDK endpoints default closed, bind only new secrets and keep original function limits', async t => {
+  assert.notEqual(process.env.FIREBASE_DEBUG_MODE, 'true')
+  assert.equal(functionsRequire.cache[functionsRequire.resolve('@aws-sdk/client-sesv2')], undefined, 'Existing API cold starts must not import AWS SDK')
+  const express = functionsRequire('express'), app = express()
+  app.use(express.json())
+  app.post('/request', api.requestClientOtp); app.post('/verify', api.verifyClientOtp)
+  const server = await new Promise(resolve => { const s = app.listen(0, '127.0.0.1', () => resolve(s)) })
+  t.after(() => new Promise((resolve, reject) => { server.closeAllConnections(); server.close(error => error ? reject(error) : resolve()) }))
+  for (const endpoint of ['request', 'verify']) {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/${endpoint}`, { method: 'POST', headers: { origin: 'https://majstorsada.rs', 'content-type': 'application/json' }, body: JSON.stringify({ data: {} }), signal: AbortSignal.timeout(5000) })
+    assert.equal(response.status, 503)
+    assert.equal((await response.json()).code, 'unavailable')
+    assert.match(response.headers.get('cache-control'), /no-store/)
+  }
+  for (const endpoint of [api.requestClientOtp, api.verifyClientOtp]) {
+    assert.equal(endpoint.__endpoint.maxInstances, 2)
+    assert.equal(endpoint.__endpoint.concurrency, 10)
+    assert.equal(endpoint.__endpoint.minInstances, 0)
+    assert.deepEqual(endpoint.__endpoint.secretEnvironmentVariables.map(item => item.key).sort(), endpoint === api.requestClientOtp ? ['OTP_HMAC_SECRET', 'OTP_TURNSTILE_SECRET'] : ['OTP_HMAC_SECRET'])
+  }
+  assert.equal(api.resolveAccount.__endpoint.maxInstances, 3)
+  assert.equal(api.resolveAccount.__endpoint.concurrency, 80)
+})

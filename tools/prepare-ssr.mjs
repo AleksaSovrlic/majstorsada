@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { isDeepStrictEqual } from 'node:util'
 import { projectRoot, readJson, validateManifest, validateLock, assertSsrDeps } from './assert-ssr-deps.mjs'
+import { readApprovedOverrides, applySsrOverridePolicy } from './dependency-policy.mjs'
 
 if (!process.env.npm_execpath) throw new Error('Run this tool through its npm run command.')
 const generated = join(projectRoot, '.output/server')
@@ -13,21 +14,25 @@ function npm(args, cwd) {
   if (result.error || result.status !== 0) throw new Error(`npm ${args.join(' ')} failed`, { cause: result.error })
 }
 try {
-  const pkg = readJson(join(generated, 'package.json'))
+  const approvedOverrides = readApprovedOverrides(join(projectRoot, 'package.json'))
+  const pkg = applySsrOverridePolicy(readJson(join(generated, 'package.json')), approvedOverrides)
+  // Nitro generates its own manifest. Materialize the reviewed root override
+  // policy before comparing it with deploy/ssr or running npm ci.
+  writeFileSync(join(generated, 'package.json'), JSON.stringify(pkg, null, 2) + '\n')
   validateManifest(pkg)
   if (refresh) {
     mkdirSync(canonical, { recursive: true })
     writeFileSync(join(canonical, 'package.json'), JSON.stringify(pkg, null, 2) + '\n')
     // Explicit maintenance operation. Normal builds never resolve new versions.
     npm(['install', '--package-lock-only', '--ignore-scripts', '--omit=dev'], canonical)
-    validateLock(pkg, readJson(join(canonical, 'package-lock.json')))
+    validateLock(pkg, readJson(join(canonical, 'package-lock.json')), approvedOverrides)
   } else {
     if (!isDeepStrictEqual(pkg, readJson(join(canonical, 'package.json')))) throw new Error('SSR manifest changed. Review dependency changes, then run npm run ssr:refresh.')
-    validateLock(pkg, readJson(join(canonical, 'package-lock.json')))
+    validateLock(pkg, readJson(join(canonical, 'package-lock.json')), approvedOverrides)
   }
   copyFileSync(join(canonical, 'package-lock.json'), join(generated, 'package-lock.json'))
   npm(['ci', '--omit=dev'], generated)
-  console.log(`[prepare-ssr] ${assertSsrDeps()} dependencies installed from the reviewed lockfile.`)
+  console.log(`[prepare-ssr] ${assertSsrDeps(generated, canonical, approvedOverrides)} dependencies installed from the reviewed lockfile.`)
 } catch (error) {
   console.error(`[prepare-ssr] ${error.message}`)
   process.exitCode = 1

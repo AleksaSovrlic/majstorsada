@@ -48,3 +48,7 @@ serviceAccountKey.json
 Thumbs.db
 # Python browser-test bytecode
 __pycache__/
+
+# Local emulator secrets; never publish or commit.
+.secret.local
+.secret.*.local

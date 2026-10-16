@@ -291,6 +291,41 @@
           "queryScope": "COLLECTION"
         }
       ]
+    },
+    {
+      "collectionGroup": "_otpBudget",
+      "fieldPath": "*",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "_otpRateStates",
+      "fieldPath": "*",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "_otpChallenges",
+      "fieldPath": "*",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "_otpRateStates",
+      "fieldPath": "deleteAfter",
+      "indexes": [
+        {
+          "queryScope": "COLLECTION",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "_otpChallenges",
+      "fieldPath": "deleteAfter",
+      "indexes": [
+        {
+          "queryScope": "COLLECTION",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ]
 }

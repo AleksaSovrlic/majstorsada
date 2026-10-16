@@ -4,7 +4,7 @@
     variant="solid"
     maxWidth="5xl"
     :rightAction="rightAction"
-    :backTo="backTo"
+    backTo="/"
   />
   <slot />
 </template>
@@ -14,18 +14,6 @@ import { computed } from 'vue'
 
 const route = useRoute()
 
-const rightAction = computed(() => {
-  // Client login should have an "express lane" back action (instead of a self-linking "Prijava" CTA).
-  return route.path === '/login' || route.path === '/finishLogin' ? 'back' : 'auto'
-})
-
-const backTo = computed(() => {
-  if (route.path === '/finishLogin') {
-    const from = typeof route.query.from === 'string' && route.query.from ? route.query.from : '/zahtev'
-    return `/login?from=${encodeURIComponent(from)}`
-  }
-  return '/'
-})
+// Login has a back action instead of a link to the page already being shown.
+const rightAction = computed(() => route.path === '/login' ? 'back' : 'auto')
 </script>
-
-

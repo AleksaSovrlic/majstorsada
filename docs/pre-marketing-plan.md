@@ -1,5 +1,9 @@
 # Pre-marketing work packages
 
+<!-- otp-magic-retirement:current -->
+Client email OTP with Amazon SES, legacy email-link retirement, the login performance pass and browser Auth storage recovery are production-released. Existing UIDs, roles and job access remain intact; staff password sign-in is retained. See the [retirement report](otp-magic-link-retirement-report.md), [performance release](otp-performance-deployment-report.md) and [latest storage-recovery release](otp-browser-storage-deployment-report.md). The final pre-marketing release-readiness package remains next and requires its own agreed scope. Earlier package descriptions below retain their dated history.
+<!-- /otp-magic-retirement:current -->
+
 Updated 24 September 2026 after cost-control production deployment and automated verification; packages 1–3 are production-released and owner-accepted. Startup optimization is production-released and owner-accepted, including confirmed real push delivery; Git commit/push is authorized. The remaining order below is a proposal, not approval to implement every package. Prepare each implementation plan against the then-current code and agree its scope before starting.
 
 ## Completed foundations
@@ -25,7 +29,9 @@ All 27 targeted lifecycle tests, 98 security tests, 13 build guards, the product
 
 The owner approved two new client requests per rolling 24 hours, at most two unexpired pending requests, 24-hour publication/upload deadlines, seven-day closed-photo retention, history pages of three and admin pages of twenty. Active jobs remain live and never expire automatically. See cost-control-plan.md and cost-control-report.md for implementation, tests, pricing assumptions and staged release requirements. Production deployment and budget configuration are complete; see cost-control-release.md. The owner confirmed the live checks passed and authorized Git commit/push with the title `feat(jobs): add lifecycle policies and optimize dashboard loading`. Budget alerts and maxInstances are not spending caps.
 
-## Following package: OTP sign-in
+## OTP sign-in — production released
+
+Email OTP and the removal of the former client email-link flow are complete. The shared server limit is 500 reserved send attempts per rolling 24 hours, with three per address; UID, role and business data protections remain in place. See the [retirement report](otp-magic-link-retirement-report.md). The original design brief below is retained as historical context.
 
 Design email OTP and account linking while preserving existing UIDs, roles, jobs and token balances. Define verification-attempt limits, resend cooldowns, delivery failure/recovery and email abuse controls before enabling the provider. The approved direction is email OTP, not SMS OTP. Review actual provider pricing and expected volume at that time. Client email remains absent from tradesperson job data; phone access still follows acceptance.
 

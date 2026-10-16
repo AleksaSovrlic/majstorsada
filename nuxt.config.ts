@@ -1,5 +1,5 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
-import { execSync } from 'node:child_process'
+import { resolveAppBuildId } from './tools/app-build-identity.mjs'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -8,30 +8,10 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 const SITE_URL = (process.env.NUXT_PUBLIC_SITE_URL || 'https://majstorsada.rs').replace(/\/+$/, '')
 
-// The Git commit this build was produced from. Surfaces publicly in two places:
-//   - `_nuxt/builds/latest.json` (static, served by Hosting)
-//   - the `builds/meta/<buildId>.json` preload link in server-rendered HTML (served by the SSR function)
-// Deliberately has no fallback: a production build that cannot identify itself must not be produced,
-// because a placeholder would make every probe agree and the post-deploy check pass on nothing.
-// `nuxt build` sets NODE_ENV=production before loading this config, `nuxt dev` sets development.
-function resolveBuildId (): string {
-  if (process.env.NODE_ENV === 'development') {
-    return 'dev'
-  }
-  try {
-    const git = (args: string) =>
-      execSync(`git ${args}`, { cwd: __dirname, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
-    const sha = git('rev-parse --short HEAD')
-    return git('status --porcelain') ? `${sha}-dirty` : sha
-  } catch (error) {
-    throw new Error(
-      'Cannot resolve the Git commit for buildId. A production build that cannot identify itself must not be deployed. '
-      + `Original error: ${(error as Error).message}`
-    )
-  }
-}
-
-const BUILD_ID = resolveBuildId()
+// One fresh app ID per build, shared across config loads by the build wrapper.
+// A Git revision alone cannot distinguish successive dirty builds. Nuxt's
+// existing old-build navigation/chunk recovery compares this ID.
+const BUILD_ID = resolveAppBuildId(__dirname)
 
 export default defineNuxtConfig({
   srcDir: 'app',
@@ -39,7 +19,7 @@ export default defineNuxtConfig({
     '@': join(__dirname, 'app')
   },
   compatibilityDate: '2025-07-15',
-  // Replaces Nuxt's random per-build UUID, so the deployed build names its own commit.
+  // Unique per build, with the Git revision retained for traceability.
   buildId: BUILD_ID,
   // Production safety: disable Nuxt DevTools in prod builds
   devtools: { enabled: false },
@@ -277,9 +257,10 @@ export default defineNuxtConfig({
   },
   runtimeConfig: {
     public: {
-      // Canonical public origin (used for Auth email links / deep links in production).
+      // Canonical public origin for navigation and deep links in production.
       // Set NUXT_PUBLIC_SITE_URL to override (e.g. staging). Defaults to branded domain.
       siteUrl: SITE_URL,
+      turnstileSiteKey: process.env.NUXT_PUBLIC_TURNSTILE_SITE_KEY || '',
       firebase: {
         apiKey: process.env.NUXT_PUBLIC_FIREBASE_API_KEY || 'demo-api-key',
         authDomain: process.env.NUXT_PUBLIC_FIREBASE_AUTH_DOMAIN || 'localhost',

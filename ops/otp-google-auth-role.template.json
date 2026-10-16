@@ -1,0 +1,6 @@
+{
+  "title": "MajstorSada OTP Auth access",
+  "description": "Read and create Firebase users for verified client OTP completion; no deletion or role administration.",
+  "stage": "GA",
+  "includedPermissions": ["firebaseauth.users.get", "firebaseauth.users.create"]
+}

@@ -3,7 +3,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "build": "nuxt build && node tools/prepare-ssr.mjs",
+    "build": "node tools/build-app.mjs",
     "dev": "nuxt dev --port 3333",
     "deploy:prod": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/deploy-prod.ps1",
     "emulators:start": "node tools/start-emulators.mjs",
@@ -11,13 +11,29 @@
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
     "test:security": "npm --prefix functions run build && node tests/security/run.mjs",
-    "ssr:refresh": "nuxt build && node tools/prepare-ssr.mjs --refresh",
-    "test:build": "node --test tests/build/ssr-deps.test.mjs",
+    "ssr:refresh": "node tools/build-app.mjs --refresh",
+    "test:build": "node --test tests/build/ssr-deps.test.mjs tests/build/app-build.test.mjs",
     "test:e2e": "node tests/e2e/run.mjs",
     "test:ssr": "node tests/build/run.mjs",
     "test:startup": "node --experimental-vm-modules --test tests/startup/messaging.test.mjs",
     "test:startup:browser": "node tests/startup/run.mjs",
-    "test:cost": "node --experimental-vm-modules --test tests/cost-control/pagination.test.mjs"
+    "test:cost": "node --experimental-vm-modules --test tests/cost-control/pagination.test.mjs",
+    "test:otp": "npm --prefix functions run build && node --experimental-vm-modules --test tests/otp/runtime.test.mjs tests/otp/diagnostics.test.mjs tests/otp/widget.test.mjs tests/otp/http.test.mjs tests/otp/transport.test.mjs tests/otp/frontend.test.mjs tests/otp/retired-email-link.test.mjs tests/otp/maintenance-orchestration.test.mjs && node tests/otp/run.mjs",
+    "test:otp:e2e": "npm --prefix functions run build && node tests/otp/e2e-run.mjs",
+    "test:dependencies": "node --test tests/dependencies/*.test.mjs",
+    "test:dependencies:firebase": "node tests/dependencies/firebase-run.mjs",
+    "otp:google:plan": "node tools/prepare-otp-google.mjs --plan",
+    "otp:google:apply": "node tools/prepare-otp-google.mjs --apply",
+    "otp:google:verify": "node tools/prepare-otp-google.mjs --verify",
+    "test:otp:cloud": "node --test tests/otp/cloud-*.test.mjs",
+    "otp:secrets:plan": "node tools/prepare-otp-secrets.mjs --plan",
+    "otp:secrets:apply": "node tools/prepare-otp-secrets.mjs --apply",
+    "otp:secrets:verify": "node tools/prepare-otp-secrets.mjs --verify",
+    "otp:rollout:plan": "npm --prefix functions run build && node tools/prepare-otp-ingress.mjs --plan",
+    "otp:ingress:probe": "node tools/otp-ingress-probe.mjs --probe",
+    "otp:ingress:closed": "node tools/otp-ingress-probe.mjs --verify-closed",
+    "otp:owner:plan": "npm --prefix functions run build && node tools/prepare-otp-owner.mjs --plan",
+    "build:verify": "node tools/assert-app-build.mjs"
   },
   "dependencies": {
     "@nuxtjs/robots": "6.2.2",
@@ -39,10 +55,20 @@
     "cac": "6.7.14",
     "commander": "14.0.3",
     "firebase-admin": "14.4.0",
-    "firebase-tools": "15.30.0",
+    "firebase-tools": "15.32.1",
     "unplugin": "3.3.0"
   },
   "volta": {
     "node": "24.18.0"
+  },
+  "overrides": {
+    "@firebase/firestore": {
+      "@grpc/grpc-js": "1.14.5"
+    },
+    "gaxios@^6.0.0": {
+      "uuid": "11.1.1"
+    },
+    "source-map-js": "1.2.2",
+    "proxy-addr": "2.0.8"
   }
 }

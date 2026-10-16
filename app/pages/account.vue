@@ -35,7 +35,7 @@ async function client() {
   busy.value = true; error.value = ''
   try {
     if (!auth.currentUser?.emailVerified) {
-      error.value = 'Za klijentski nalog potvrdite e-mail preko linka za prijavu.'
+      error.value = 'Za klijentski nalog prvo potvrdite e-mail prijavom.'
       await auth.signOut(); return await navigateTo('/login')
     }
     await api('completeRegistration', { role: 'client' }); await check()

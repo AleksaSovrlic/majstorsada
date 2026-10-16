@@ -5,8 +5,7 @@ $ProjectRoot = Resolve-Path (Join-Path $ScriptDir '..')
 
 Push-Location $ProjectRoot
 try {
-  # Same rule the Nuxt config and the functions generator apply independently: no commit, no build.
-  # Printed up front so it can be compared against the three post-deploy probes.
+  # API health reports the source revision; Nuxt has a separate unique build ID.
   $BuildSha = git rev-parse --short HEAD
   if ($LASTEXITCODE -ne 0) {
     Write-Error 'Cannot resolve the Git commit. A build that cannot identify itself must not be deployed.' -ErrorAction Continue
@@ -15,7 +14,7 @@ try {
   if (git status --porcelain) {
     $BuildSha = "$BuildSha-dirty"
   }
-  Write-Host "Deploying build: $BuildSha"
+  Write-Host "Source revision: $BuildSha"
 
   Write-Host 'Compiling Cloud Functions...'
   npm --prefix functions run build
@@ -49,6 +48,12 @@ try {
   if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
   }
+  node tools/assert-app-build.mjs
+  if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+  }
+  $AppBuildId = (Get-Content '.output/build-receipt.json' -Raw | ConvertFrom-Json).id
+  Write-Host "Frontend build: $AppBuildId"
   $ssrRuntime = node -p "require('./.output/server/package-lock.json').packages['node_modules/firebase-functions'].version"
   Write-Host "SSR runtime: firebase-functions@$ssrRuntime"
 

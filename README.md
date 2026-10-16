@@ -26,7 +26,8 @@ MajstorSada reduces that friction with a single request flow, service-specific l
 - Public SEO landing pages for urgent services in Belgrade.
 - Request submission flow for plumbing, electrical, locksmith, and general repair needs.
 - Client, tradesperson, and admin surfaces.
-- Firebase Auth-based access for private areas.
+- Client sign-in with a six-digit email OTP, server-enforced resend/attempt limits, and a shared daily sending budget.
+- Firebase Auth-based access for private areas; tradesperson and admin password sign-in remain separate.
 - Firestore-backed request and job state.
 - Firebase Storage support for uploaded assets and request images.
 - Push notification workflow for tradespeople via Firebase Cloud Messaging.
@@ -46,6 +47,8 @@ MajstorSada reduces that friction with a single request flow, service-specific l
 - Firebase Auth
 - Firebase Storage
 - Firebase Cloud Messaging
+- Amazon SES in Frankfurt with short-lived credentials federated from the Google runtime identity.
+- Cloudflare Turnstile for client OTP anti-bot checks.
 - Nuxt SEO, robots, sitemap, and schema modules
 
 ## Architecture
@@ -184,8 +187,7 @@ The command compiles the existing API and runs Node tests against Firestore and 
 emulators using only `demo-majstorsada-security`. It does not deploy, load Nuxt env
 files, or start notification triggers. No new test dependency is required.
 
-A Java runtime is required (verified with Java 17 and the locked Firebase CLI 14;
-use Java 21+ when upgrading the CLI). On Windows, the runner resolves the actual
+A Java runtime is required; the suites were verified with Java 21 and the locked Firebase CLI. On Windows, the runner resolves the actual
 Java executable so the Oracle launcher cannot leave an orphan emulator process.
 Ports 8289, 9398, 4441 and 4541 must be free. The CLI manages emulator startup and
 shutdown; cached emulator binaries avoid a download after the first run.
@@ -202,6 +204,8 @@ server-owned job creation, retry-safe acceptance and authenticated photos.
 [Browser checks](tests/e2e/README.md) additionally exercise real emulator Auth and
 frontend recovery from interrupted requests. Neither suite verifies production
 IAM, push delivery or billing.
+
+OTP service, rate-limit, delivery/retry and frontend recovery tests run through `npm run test:otp`; `npm run test:otp:e2e` additionally exercises the installed Firebase SDK and browser flows against isolated demo emulators. Real SES email is never sent by these emulator tests. See the [OTP setup and current state](docs/otp-setup.md) and [latest controlled production release](docs/otp-browser-storage-deployment-report.md).
 
 The [release procedure and production verification](docs/phase2-release.md) document the coordinated rollout.
 See [security boundaries](docs/security-boundaries.md) and the
@@ -224,7 +228,7 @@ Local Firebase Admin service account files must remain local-only.
 
 ## Current Limitations
 
-- Security and browser regression suites cover account and job workflows. Real email-link delivery and device push notifications still require manual checks.
+- Security and browser regression suites cover account and job workflows. Real OTP email delivery and device push notifications still require manual checks.
 - Dependency and runtime maintenance is planned.
 - Matching, ranking, and analytics can be improved.
 - Operational verification processes need to keep evolving as the tradesperson network grows.

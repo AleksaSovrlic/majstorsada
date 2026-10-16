@@ -1,0 +1,8 @@
+{
+  "title": "MajstorSada OTP token signing",
+  "description": "Blob signing used by Firebase custom-token issuance; no access-token or ID-token generation API permissions.",
+  "stage": "GA",
+  "includedPermissions": [
+    "iam.serviceAccounts.signBlob"
+  ]
+}
