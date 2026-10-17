@@ -9,7 +9,7 @@ const deferred = () => { let resolve, reject; const promise = new Promise((yes, 
 const flush = async () => { for (let i = 0; i < 5; i++) await new Promise(setImmediate) }
 
 async function fixture(options = {}) {
-  const calls = { support: 0, register: 0, listener: 0, token: 0, writes: [], reads: 0, deletes: [], warnings: [], notifications: [], permission: 0 }
+  const calls = { staticImports: [], dynamicImports: [], messagingImports: 0, support: 0, register: 0, listener: 0, token: 0, writes: [], reads: 0, deletes: [], warnings: [], notifications: [], permission: 0 }
   const auth = { currentUser: { uid: 'worker-a' }, role: options.role || 'tradesperson', ensureAuthReady: async () => {}, resolveUserRole: async () => { auth.role = 'tradesperson'; return auth.role } }
   if (options.anonymous) auth.currentUser = null
   function Notification(title, data) { calls.notifications.push({ title, data }); this.onclick = null }
@@ -25,7 +25,7 @@ async function fixture(options = {}) {
     defineNuxtPlugin: p => p,
     useRuntimeConfig: () => ({ public: { firebase: { projectId: options.demo ? 'demo-test' : 'production-shaped-fixture' }, firebaseVapidKey: 'fixture' } }),
     navigator: { ...(options.noWorker ? {} : { serviceWorker: worker }), userAgent: 'fixture-agent' },
-    Notification, document, location: { origin: 'https://example.test' }, window: { focus() {}, location: {} },
+    ...(options.noNotification ? {} : { Notification }), document, location: { origin: 'https://example.test' }, window: { focus() {}, location: {} },
     console: { warn: (...args) => calls.warnings.push(args), log() {} },
     btoa: value => Buffer.from(value).toString('base64')
   })
@@ -53,13 +53,97 @@ async function fixture(options = {}) {
   }
   const plugin = new vm.SourceTextModule(source, {
     context, initializeImportMeta: meta => { meta.dev = false },
-    importModuleDynamically: async name => { const m = module(name); if (m.status === 'unlinked') await m.link(() => {}); if (m.status === 'linked') await m.evaluate(); return m }
+    importModuleDynamically: async name => {
+      calls.dynamicImports.push(name)
+      if (name === 'firebase/messaging') {
+        calls.messagingImports++
+        if (options.messagingImport) await options.messagingImport(calls.messagingImports)
+      }
+      const m = module(name)
+      if (m.status === 'unlinked') await m.link(() => {})
+      if (m.status === 'linked') await m.evaluate()
+      return m
+    }
   })
-  await plugin.link(name => module(name)); await plugin.evaluate()
+  await plugin.link(name => { calls.staticImports.push(name); return module(name) }); await plugin.evaluate()
   const result = plugin.namespace.default.setup({ $firebaseApp: {}, $firestore: {} })
   assert.equal(typeof result?.then, 'undefined', 'Plugin setup must never block hydration')
-  return { api: result.provide.fcm, calls, auth, Notification, document, swReg }
+  return { api: result.provide.fcm, calls, auth, Notification, document, swReg, definition: plugin.namespace.default }
 }
+
+
+test('messaging SDK is excluded from static imports and pending loading never blocks the provided API', async () => {
+  const loading = deferred()
+  const f = await fixture({ messagingImport: () => loading.promise })
+  assert.deepEqual(f.calls.staticImports, ['@/stores/auth'])
+  assert.deepEqual([...f.definition.dependsOn], ['firebase', 'auth-init'])
+  assert.equal(f.calls.messagingImports, 1)
+  assert.equal(f.calls.support, 0)
+  assert.equal(f.calls.register, 0)
+  const permission = f.api.requestPermission()
+  assert.equal(f.calls.permission, 1, 'User activation must reach the browser before SDK loading resolves')
+  assert.equal(await permission, 'granted')
+  loading.resolve(); await flush()
+  assert.equal(f.calls.support, 1); assert.equal(f.calls.register, 1)
+})
+
+test('concurrent startup and explicit synchronization share one pending SDK import', async () => {
+  const loading = deferred()
+  const f = await fixture({ permission: 'granted', messagingImport: () => loading.promise })
+  const requests = [f.api.getAndSaveFcmToken(), f.api.getAndSaveFcmToken()]
+  await flush()
+  assert.equal(f.calls.messagingImports, 1)
+  assert.equal(f.calls.register, 0); assert.equal(f.calls.token, 0)
+  loading.resolve()
+  assert.deepEqual(await Promise.all(requests), ['fixture-token', 'fixture-token'])
+  assert.equal(f.calls.messagingImports, 1)
+  assert.equal(f.calls.listener, 1); assert.equal(f.calls.token, 1)
+  assert.equal(f.calls.writes.length, 1); assert.equal(f.calls.reads, 1)
+})
+
+test('a failed lazy SDK import is contained and a later explicit attempt can retry', async () => {
+  const f = await fixture({ messagingImport: async attempt => { if (attempt === 1) throw new Error('module fetch offline') } })
+  await flush()
+  assert.equal(f.calls.support, 0); assert.equal(f.calls.register, 0)
+  assert.equal(f.calls.warnings.length, 1)
+  f.Notification.permission = 'granted'
+  assert.equal(await f.api.getAndSaveFcmToken(), 'fixture-token')
+  assert.equal(f.calls.messagingImports, 2)
+  assert.equal(f.calls.listener, 1); assert.equal(f.calls.writes.length, 1)
+})
+
+for (const options of [{ demo: true }, { noWorker: true }, { noNotification: true }]) {
+  test('environment fallback does not import the messaging SDK', async () => {
+    const f = await fixture(options); await flush()
+    assert.deepEqual(f.calls.staticImports, ['@/stores/auth'])
+    assert.deepEqual(f.calls.dynamicImports, [])
+    assert.equal(await f.api.requestPermission(), 'denied')
+    assert.equal(await f.api.getAndSaveFcmToken(), null)
+    assert.equal(f.calls.messagingImports, 0)
+  })
+}
+
+for (const replacement of [null, { uid: 'worker-b' }, { uid: 'worker-a' }]) {
+  test('session change while the lazy SDK import is pending prevents stale token generation', async () => {
+    const loading = deferred()
+    const f = await fixture({ permission: 'granted', messagingImport: () => loading.promise })
+    const request = f.api.getAndSaveFcmToken(); await flush()
+    f.auth.currentUser = replacement
+    loading.resolve()
+    assert.equal(await request, null)
+    assert.equal(f.calls.token, 0); assert.equal(f.calls.writes.length, 0)
+  })
+}
+
+test('role change while the lazy SDK import is pending prevents stale token generation', async () => {
+  const loading = deferred()
+  const f = await fixture({ permission: 'granted', messagingImport: () => loading.promise })
+  const request = f.api.getAndSaveFcmToken(); await flush()
+  f.auth.role = 'client'
+  loading.resolve()
+  assert.equal(await request, null)
+  assert.equal(f.calls.token, 0); assert.equal(f.calls.writes.length, 0)
+})
 
 test('slow support detection exposes a usable API without blocking application setup', async () => {
   const support = deferred()

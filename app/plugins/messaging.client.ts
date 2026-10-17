@@ -1,4 +1,3 @@
-import { getMessaging, getToken, isSupported, onMessage } from 'firebase/messaging'
 import { useAuthStore } from '@/stores/auth'
 
 export default defineNuxtPlugin({
@@ -21,7 +20,8 @@ export default defineNuxtPlugin({
     // Capture Nuxt/Pinia dependencies before background work crosses an await.
     const auth = useAuthStore()
     const vapidKey = ((runtime.public as any).firebaseVapidKey as string) || ''
-    type ReadyMessaging = { messaging: ReturnType<typeof getMessaging>; swReg: ServiceWorkerRegistration }
+    type MessagingSdk = typeof import('firebase/messaging')
+    type ReadyMessaging = { sdk: MessagingSdk; messaging: ReturnType<MessagingSdk['getMessaging']>; swReg: ServiceWorkerRegistration }
     let readyPromise: Promise<ReadyMessaging | null> | null = null
     let unsupported = false
     const syncByUser = new WeakMap<object, Promise<string | null>>()
@@ -29,10 +29,12 @@ export default defineNuxtPlugin({
     function ensureMessagingReady(): Promise<ReadyMessaging | null> {
       if (readyPromise) return readyPromise
       readyPromise = (async () => {
-        if (!(await isSupported())) { unsupported = true; return null }
+        // Load the SDK here so Messaging execution stays outside the initial application graph.
+        const sdk = await import('firebase/messaging')
+        if (!(await sdk.isSupported())) { unsupported = true; return null }
         const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/' })
-        const messaging = getMessaging((nuxt as any).$firebaseApp)
-        onMessage(messaging, (payload) => {
+        const messaging = sdk.getMessaging((nuxt as any).$firebaseApp)
+        sdk.onMessage(messaging, (payload) => {
           if (import.meta.dev) {
             console.log('[messaging] foreground message', payload)
           }
@@ -59,7 +61,7 @@ export default defineNuxtPlugin({
             // ignore
           }
         })
-        return { messaging, swReg }
+        return { sdk, messaging, swReg }
       })().catch(error => {
         // A later explicit attempt can retry a transient initialization failure.
         readyPromise = null
@@ -91,7 +93,7 @@ export default defineNuxtPlugin({
           // A newly installed worker must activate before PushManager.subscribe.
           await navigator.serviceWorker.ready
           if (!isCurrentSession() || Notification.permission !== 'granted') return null
-          const token = await getToken(ready.messaging, { vapidKey, serviceWorkerRegistration: ready.swReg })
+          const token = await ready.sdk.getToken(ready.messaging, { vapidKey, serviceWorkerRegistration: ready.swReg })
           if (!token || !isCurrentSession() || Notification.permission !== 'granted') return null
           const { doc, setDoc, serverTimestamp, collection, query, where, getDocs, deleteDoc } = await import('firebase/firestore')
           if (!isCurrentSession()) return null

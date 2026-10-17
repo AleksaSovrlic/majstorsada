@@ -66,8 +66,7 @@ const averageText = computed(() => {
 })
 
 const showTopUp = ref(false)
-// Placeholder: replace with a real number when available.
-const adminTopUpPhone = '06X/XXX-XXXX'
+const adminTopUpPhone = '0644389171'
 </script>
 
 

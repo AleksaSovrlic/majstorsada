@@ -27,9 +27,6 @@
           <h2 id="jobs-title" class="text-lg sm:text-xl font-extrabold text-brand-navy tracking-tight">
             Poslovi
           </h2>
-          <p class="mt-1 text-sm text-slate-600">
-            Organizovano po standardu modernih SaaS panela.
-          </p>
         </div>
       </div>
 

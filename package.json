@@ -15,7 +15,7 @@
     "test:build": "node --test tests/build/ssr-deps.test.mjs tests/build/app-build.test.mjs",
     "test:e2e": "node tests/e2e/run.mjs",
     "test:ssr": "node tests/build/run.mjs",
-    "test:startup": "node --experimental-vm-modules --test tests/startup/messaging.test.mjs",
+    "test:startup": "npm --prefix functions run build && node --experimental-vm-modules --test tests/startup/messaging.test.mjs tests/startup/backend.test.mjs",
     "test:startup:browser": "node tests/startup/run.mjs",
     "test:cost": "node --experimental-vm-modules --test tests/cost-control/pagination.test.mjs",
     "test:otp": "npm --prefix functions run build && node --experimental-vm-modules --test tests/otp/runtime.test.mjs tests/otp/diagnostics.test.mjs tests/otp/widget.test.mjs tests/otp/http.test.mjs tests/otp/transport.test.mjs tests/otp/frontend.test.mjs tests/otp/retired-email-link.test.mjs tests/otp/maintenance-orchestration.test.mjs && node tests/otp/run.mjs",

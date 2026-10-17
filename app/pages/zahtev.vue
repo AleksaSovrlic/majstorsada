@@ -86,7 +86,6 @@
         </fieldset>
         <div>
           <label class="block text-sm text-gray-700 mb-1">Slike kvara (opciono, max 3)</label>
-          <p v-if="createdJobId" class="text-sm text-slate-600 mb-2">Zahtev je sačuvan. Dovršite fotografije ili objavite bez njih. {{ uploadedSlots.length }} fotografija je otpremljeno.</p>
           <input :disabled="submitting || recovering || finalizationStarted" type="file" accept="image/*" multiple @change="onFiles" class="w-full text-sm text-gray-600" />
 
           <div v-if="selectedImages.length > 0" class="mt-3 grid grid-cols-3 gap-2">

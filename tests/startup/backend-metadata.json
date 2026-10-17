@@ -1,0 +1,713 @@
+{
+  "comment": "Baseline API deployment metadata and parameter specs captured from committed a6c318a with firebase-functions 7.3.2. Contains names/default configuration, never secret values.",
+  "functions": {
+    "requestClientOtp": {
+      "endpoint": {
+        "availableMemoryMb": 256,
+        "timeoutSeconds": 60,
+        "minInstances": 0,
+        "maxInstances": 2,
+        "ingressSettings": null,
+        "concurrency": 10,
+        "serviceAccountEmail": "params.OTP_RUNTIME_SERVICE_ACCOUNT",
+        "vpc": null,
+        "platform": "gcfv2",
+        "region": [
+          "europe-west3"
+        ],
+        "secretEnvironmentVariables": [
+          {
+            "key": "OTP_HMAC_SECRET"
+          },
+          {
+            "key": "OTP_TURNSTILE_SECRET"
+          }
+        ],
+        "labels": {},
+        "httpsTrigger": {
+          "invoker": [
+            "public"
+          ]
+        }
+      },
+      "trigger": {
+        "platform": "gcfv2",
+        "concurrency": 10,
+        "minInstances": 0,
+        "maxInstances": 2,
+        "availableMemoryMb": 256,
+        "regions": [
+          "europe-west3"
+        ],
+        "timeout": "60s",
+        "secrets": [
+          {
+            "options": {},
+            "name": "OTP_HMAC_SECRET"
+          },
+          {
+            "options": {},
+            "name": "OTP_TURNSTILE_SECRET"
+          }
+        ],
+        "serviceAccountEmail": "params.OTP_RUNTIME_SERVICE_ACCOUNT",
+        "labels": {},
+        "httpsTrigger": {
+          "allowInsecure": false,
+          "invoker": [
+            "public"
+          ]
+        }
+      }
+    },
+    "verifyClientOtp": {
+      "endpoint": {
+        "availableMemoryMb": 256,
+        "timeoutSeconds": 60,
+        "minInstances": 0,
+        "maxInstances": 2,
+        "ingressSettings": null,
+        "concurrency": 10,
+        "serviceAccountEmail": "params.OTP_RUNTIME_SERVICE_ACCOUNT",
+        "vpc": null,
+        "platform": "gcfv2",
+        "region": [
+          "europe-west3"
+        ],
+        "secretEnvironmentVariables": [
+          {
+            "key": "OTP_HMAC_SECRET"
+          }
+        ],
+        "labels": {},
+        "httpsTrigger": {
+          "invoker": [
+            "public"
+          ]
+        }
+      },
+      "trigger": {
+        "platform": "gcfv2",
+        "concurrency": 10,
+        "minInstances": 0,
+        "maxInstances": 2,
+        "availableMemoryMb": 256,
+        "regions": [
+          "europe-west3"
+        ],
+        "timeout": "60s",
+        "secrets": [
+          {
+            "options": {},
+            "name": "OTP_HMAC_SECRET"
+          }
+        ],
+        "serviceAccountEmail": "params.OTP_RUNTIME_SERVICE_ACCOUNT",
+        "labels": {},
+        "httpsTrigger": {
+          "allowInsecure": false,
+          "invoker": [
+            "public"
+          ]
+        }
+      }
+    },
+    "health": {
+      "endpoint": {
+        "availableMemoryMb": 256,
+        "timeoutSeconds": 60,
+        "minInstances": 0,
+        "maxInstances": 3,
+        "ingressSettings": null,
+        "concurrency": 80,
+        "serviceAccountEmail": null,
+        "vpc": null,
+        "platform": "gcfv2",
+        "region": [
+          "europe-west3"
+        ],
+        "labels": {},
+        "httpsTrigger": {}
+      },
+      "trigger": {
+        "platform": "gcfv2",
+        "concurrency": 80,
+        "minInstances": 0,
+        "maxInstances": 3,
+        "availableMemoryMb": 256,
+        "regions": [
+          "europe-west3"
+        ],
+        "timeout": "60s",
+        "labels": {},
+        "httpsTrigger": {
+          "allowInsecure": false
+        }
+      }
+    },
+    "resolveAccount": {
+      "endpoint": {
+        "availableMemoryMb": 256,
+        "timeoutSeconds": 60,
+        "minInstances": 0,
+        "maxInstances": 3,
+        "ingressSettings": null,
+        "concurrency": 80,
+        "serviceAccountEmail": null,
+        "vpc": null,
+        "platform": "gcfv2",
+        "region": [
+          "europe-west3"
+        ],
+        "labels": {},
+        "httpsTrigger": {}
+      },
+      "trigger": {
+        "platform": "gcfv2",
+        "concurrency": 80,
+        "minInstances": 0,
+        "maxInstances": 3,
+        "availableMemoryMb": 256,
+        "regions": [
+          "europe-west3"
+        ],
+        "timeout": "60s",
+        "labels": {},
+        "httpsTrigger": {
+          "allowInsecure": false
+        }
+      }
+    },
+    "completeRegistration": {
+      "endpoint": {
+        "availableMemoryMb": 256,
+        "timeoutSeconds": 60,
+        "minInstances": 0,
+        "maxInstances": 3,
+        "ingressSettings": null,
+        "concurrency": 80,
+        "serviceAccountEmail": null,
+        "vpc": null,
+        "platform": "gcfv2",
+        "region": [
+          "europe-west3"
+        ],
+        "labels": {},
+        "httpsTrigger": {}
+      },
+      "trigger": {
+        "platform": "gcfv2",
+        "concurrency": 80,
+        "minInstances": 0,
+        "maxInstances": 3,
+        "availableMemoryMb": 256,
+        "regions": [
+          "europe-west3"
+        ],
+        "timeout": "60s",
+        "labels": {},
+        "httpsTrigger": {
+          "allowInsecure": false
+        }
+      }
+    },
+    "createJob": {
+      "endpoint": {
+        "availableMemoryMb": 256,
+        "timeoutSeconds": 60,
+        "minInstances": 0,
+        "maxInstances": 3,
+        "ingressSettings": null,
+        "concurrency": 80,
+        "serviceAccountEmail": null,
+        "vpc": null,
+        "platform": "gcfv2",
+        "region": [
+          "europe-west3"
+        ],
+        "labels": {},
+        "httpsTrigger": {}
+      },
+      "trigger": {
+        "platform": "gcfv2",
+        "concurrency": 80,
+        "minInstances": 0,
+        "maxInstances": 3,
+        "availableMemoryMb": 256,
+        "regions": [
+          "europe-west3"
+        ],
+        "timeout": "60s",
+        "labels": {},
+        "httpsTrigger": {
+          "allowInsecure": false
+        }
+      }
+    },
+    "finalizeJobImages": {
+      "endpoint": {
+        "availableMemoryMb": 256,
+        "timeoutSeconds": 60,
+        "minInstances": 0,
+        "maxInstances": 3,
+        "ingressSettings": null,
+        "concurrency": 80,
+        "serviceAccountEmail": null,
+        "vpc": null,
+        "platform": "gcfv2",
+        "region": [
+          "europe-west3"
+        ],
+        "labels": {},
+        "httpsTrigger": {}
+      },
+      "trigger": {
+        "platform": "gcfv2",
+        "concurrency": 80,
+        "minInstances": 0,
+        "maxInstances": 3,
+        "availableMemoryMb": 256,
+        "regions": [
+          "europe-west3"
+        ],
+        "timeout": "60s",
+        "labels": {},
+        "httpsTrigger": {
+          "allowInsecure": false
+        }
+      }
+    },
+    "acceptJob": {
+      "endpoint": {
+        "availableMemoryMb": 256,
+        "timeoutSeconds": 60,
+        "minInstances": 0,
+        "maxInstances": 3,
+        "ingressSettings": null,
+        "concurrency": 80,
+        "serviceAccountEmail": null,
+        "vpc": null,
+        "platform": "gcfv2",
+        "region": [
+          "europe-west3"
+        ],
+        "labels": {},
+        "httpsTrigger": {}
+      },
+      "trigger": {
+        "platform": "gcfv2",
+        "concurrency": 80,
+        "minInstances": 0,
+        "maxInstances": 3,
+        "availableMemoryMb": 256,
+        "regions": [
+          "europe-west3"
+        ],
+        "timeout": "60s",
+        "labels": {},
+        "httpsTrigger": {
+          "allowInsecure": false
+        }
+      }
+    },
+    "cancelJob": {
+      "endpoint": {
+        "availableMemoryMb": 256,
+        "timeoutSeconds": 60,
+        "minInstances": 0,
+        "maxInstances": 3,
+        "ingressSettings": null,
+        "concurrency": 80,
+        "serviceAccountEmail": null,
+        "vpc": null,
+        "platform": "gcfv2",
+        "region": [
+          "europe-west3"
+        ],
+        "labels": {},
+        "httpsTrigger": {}
+      },
+      "trigger": {
+        "platform": "gcfv2",
+        "concurrency": 80,
+        "minInstances": 0,
+        "maxInstances": 3,
+        "availableMemoryMb": 256,
+        "regions": [
+          "europe-west3"
+        ],
+        "timeout": "60s",
+        "labels": {},
+        "httpsTrigger": {
+          "allowInsecure": false
+        }
+      }
+    },
+    "dismissJob": {
+      "endpoint": {
+        "availableMemoryMb": 256,
+        "timeoutSeconds": 60,
+        "minInstances": 0,
+        "maxInstances": 3,
+        "ingressSettings": null,
+        "concurrency": 80,
+        "serviceAccountEmail": null,
+        "vpc": null,
+        "platform": "gcfv2",
+        "region": [
+          "europe-west3"
+        ],
+        "labels": {},
+        "httpsTrigger": {}
+      },
+      "trigger": {
+        "platform": "gcfv2",
+        "concurrency": 80,
+        "minInstances": 0,
+        "maxInstances": 3,
+        "availableMemoryMb": 256,
+        "regions": [
+          "europe-west3"
+        ],
+        "timeout": "60s",
+        "labels": {},
+        "httpsTrigger": {
+          "allowInsecure": false
+        }
+      }
+    },
+    "readJobImage": {
+      "endpoint": {
+        "availableMemoryMb": 256,
+        "timeoutSeconds": 60,
+        "minInstances": 0,
+        "maxInstances": 3,
+        "ingressSettings": null,
+        "concurrency": 20,
+        "serviceAccountEmail": null,
+        "vpc": null,
+        "platform": "gcfv2",
+        "region": [
+          "us-central1"
+        ],
+        "labels": {},
+        "httpsTrigger": {}
+      },
+      "trigger": {
+        "platform": "gcfv2",
+        "concurrency": 20,
+        "minInstances": 0,
+        "maxInstances": 3,
+        "availableMemoryMb": 256,
+        "regions": [
+          "us-central1"
+        ],
+        "timeout": "60s",
+        "labels": {},
+        "httpsTrigger": {
+          "allowInsecure": false
+        }
+      }
+    },
+    "submitJobRating": {
+      "endpoint": {
+        "availableMemoryMb": 256,
+        "timeoutSeconds": 60,
+        "minInstances": 0,
+        "maxInstances": 3,
+        "ingressSettings": null,
+        "concurrency": 80,
+        "serviceAccountEmail": null,
+        "vpc": null,
+        "platform": "gcfv2",
+        "region": [
+          "europe-west3"
+        ],
+        "labels": {},
+        "httpsTrigger": {}
+      },
+      "trigger": {
+        "platform": "gcfv2",
+        "concurrency": 80,
+        "minInstances": 0,
+        "maxInstances": 3,
+        "availableMemoryMb": 256,
+        "regions": [
+          "europe-west3"
+        ],
+        "timeout": "60s",
+        "labels": {},
+        "httpsTrigger": {
+          "allowInsecure": false
+        }
+      }
+    },
+    "markJobAsComplete": {
+      "endpoint": {
+        "availableMemoryMb": 256,
+        "timeoutSeconds": 60,
+        "minInstances": 0,
+        "maxInstances": 3,
+        "ingressSettings": null,
+        "concurrency": 80,
+        "serviceAccountEmail": null,
+        "vpc": null,
+        "platform": "gcfv2",
+        "region": [
+          "europe-west3"
+        ],
+        "labels": {},
+        "httpsTrigger": {}
+      },
+      "trigger": {
+        "platform": "gcfv2",
+        "concurrency": 80,
+        "minInstances": 0,
+        "maxInstances": 3,
+        "availableMemoryMb": 256,
+        "regions": [
+          "europe-west3"
+        ],
+        "timeout": "60s",
+        "labels": {},
+        "httpsTrigger": {
+          "allowInsecure": false
+        }
+      }
+    },
+    "buyTokens": {
+      "endpoint": {
+        "availableMemoryMb": 256,
+        "timeoutSeconds": 60,
+        "minInstances": 0,
+        "maxInstances": 3,
+        "ingressSettings": null,
+        "concurrency": 80,
+        "serviceAccountEmail": null,
+        "vpc": null,
+        "platform": "gcfv2",
+        "region": [
+          "europe-west3"
+        ],
+        "labels": {},
+        "httpsTrigger": {}
+      },
+      "trigger": {
+        "platform": "gcfv2",
+        "concurrency": 80,
+        "minInstances": 0,
+        "maxInstances": 3,
+        "availableMemoryMb": 256,
+        "regions": [
+          "europe-west3"
+        ],
+        "timeout": "60s",
+        "labels": {},
+        "httpsTrigger": {
+          "allowInsecure": false
+        }
+      }
+    },
+    "updateTokensByAdmin": {
+      "endpoint": {
+        "availableMemoryMb": 256,
+        "timeoutSeconds": 60,
+        "minInstances": 0,
+        "maxInstances": 3,
+        "ingressSettings": null,
+        "concurrency": 80,
+        "serviceAccountEmail": null,
+        "vpc": null,
+        "platform": "gcfv2",
+        "region": [
+          "europe-west3"
+        ],
+        "labels": {},
+        "httpsTrigger": {}
+      },
+      "trigger": {
+        "platform": "gcfv2",
+        "concurrency": 80,
+        "minInstances": 0,
+        "maxInstances": 3,
+        "availableMemoryMb": 256,
+        "regions": [
+          "europe-west3"
+        ],
+        "timeout": "60s",
+        "labels": {},
+        "httpsTrigger": {
+          "allowInsecure": false
+        }
+      }
+    },
+    "notifyOnJobCreated": {
+      "endpoint": {
+        "availableMemoryMb": 256,
+        "timeoutSeconds": 60,
+        "minInstances": 0,
+        "maxInstances": 3,
+        "ingressSettings": null,
+        "concurrency": 80,
+        "serviceAccountEmail": null,
+        "vpc": null,
+        "platform": "gcfv2",
+        "region": [
+          "europe-west3"
+        ],
+        "labels": {},
+        "eventTrigger": {
+          "eventType": "google.cloud.firestore.document.v1.created",
+          "eventFilters": {
+            "database": "(default)",
+            "namespace": "(default)"
+          },
+          "eventFilterPathPatterns": {
+            "document": "jobs/{jobId}"
+          },
+          "retry": true
+        }
+      }
+    },
+    "notifyOnJobImagesReady": {
+      "endpoint": {
+        "availableMemoryMb": 256,
+        "timeoutSeconds": 60,
+        "minInstances": 0,
+        "maxInstances": 3,
+        "ingressSettings": null,
+        "concurrency": 80,
+        "serviceAccountEmail": null,
+        "vpc": null,
+        "platform": "gcfv2",
+        "region": [
+          "europe-west3"
+        ],
+        "labels": {},
+        "eventTrigger": {
+          "eventType": "google.cloud.firestore.document.v1.updated",
+          "eventFilters": {
+            "database": "(default)",
+            "namespace": "(default)"
+          },
+          "eventFilterPathPatterns": {
+            "document": "jobs/{jobId}"
+          },
+          "retry": true
+        }
+      }
+    },
+    "maintainJobs": {
+      "endpoint": {
+        "availableMemoryMb": 256,
+        "timeoutSeconds": 300,
+        "minInstances": 0,
+        "maxInstances": 1,
+        "ingressSettings": null,
+        "concurrency": 1,
+        "serviceAccountEmail": null,
+        "vpc": null,
+        "platform": "gcfv2",
+        "region": [
+          "europe-west3"
+        ],
+        "labels": {},
+        "scheduleTrigger": {
+          "schedule": "every 10 minutes",
+          "retryConfig": {},
+          "timeZone": "UTC"
+        }
+      }
+    }
+  },
+  "params": [
+    {
+      "name": "PUBLIC_WRITES_ENABLED",
+      "type": "boolean",
+      "default": false
+    },
+    {
+      "name": "JOB_IMAGES_BUCKET",
+      "type": "string",
+      "default": "majstorsada-b2ad4.firebasestorage.app"
+    },
+    {
+      "name": "OTP_ENABLED",
+      "type": "boolean",
+      "default": false
+    },
+    {
+      "name": "OTP_PUBLIC_ENABLED",
+      "type": "boolean",
+      "default": false
+    },
+    {
+      "name": "OTP_SEND_ENABLED",
+      "type": "boolean",
+      "default": true
+    },
+    {
+      "name": "OTP_TEST_EMAILS",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "name": "OTP_RUNTIME_SERVICE_ACCOUNT",
+      "type": "string",
+      "default": "otp-runtime@majstorsada-b2ad4.iam.gserviceaccount.com"
+    },
+    {
+      "name": "OTP_AWS_ROLE_ARN",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "name": "OTP_AWS_AUDIENCE",
+      "type": "string",
+      "default": "majstorsada-otp-ses"
+    },
+    {
+      "name": "OTP_GOOGLE_SUBJECT",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "name": "OTP_TRUSTED_PROXY_HOPS",
+      "type": "int",
+      "default": 0
+    },
+    {
+      "name": "OTP_DAILY_LIMIT",
+      "type": "int",
+      "default": 500
+    },
+    {
+      "name": "OTP_DIAGNOSTICS_WINDOW_START",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "name": "OTP_DIAGNOSTIC_GOOGLE_SUBJECT",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "name": "OTP_DIAGNOSTIC_GOOGLE_EMAIL",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "type": "secret",
+      "name": "OTP_HMAC_SECRET"
+    },
+    {
+      "type": "secret",
+      "name": "OTP_TURNSTILE_SECRET"
+    },
+    {
+      "name": "JOB_MAINTENANCE_ENABLED",
+      "type": "boolean",
+      "default": false
+    }
+  ]
+}

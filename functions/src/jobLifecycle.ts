@@ -2,7 +2,6 @@ import { getFirestore, FieldValue, GeoPoint, Transaction, Timestamp } from 'fire
 import { getStorage } from 'firebase-admin/storage'
 import { HttpsError } from 'firebase-functions/v2/https'
 import { defineBoolean, defineString } from 'firebase-functions/params'
-import { parsePhoneNumberFromString } from 'libphonenumber-js'
 import { geohashForLocation } from 'geofire-common'
 import { JOB_POLICY, millis, isExpired, photoDeletionAt } from './jobPolicy'
 
@@ -29,6 +28,9 @@ export function specialization(value: any) {
   return value as string
 }
 function phone(value: any) {
+  // Account restoration does not use phone metadata. Keep the same synchronous
+  // parser at the validation boundary; Node caches it after the first use.
+  const { parsePhoneNumberFromString } = require('libphonenumber-js') as typeof import('libphonenumber-js')
   const parsed = typeof value === 'string' && value.length <= 30 ? parsePhoneNumberFromString(value, 'RS') : null
   if (!parsed?.isValid()) throw new HttpsError('invalid-argument', 'Molimo unesite ispravan broj telefona.')
   return parsed.number
